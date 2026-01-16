@@ -5,4 +5,6 @@ import reactor.core.publisher.Mono;
 
 public interface ProductEventPublisherPort {
     Mono<Void> publishProductCreated(Product product);
+    Mono<Void> publishProductUpdated(Product product);
+    Mono<Void> publishProductDeleted(Product product);
 }

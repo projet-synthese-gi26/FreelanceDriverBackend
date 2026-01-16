@@ -13,6 +13,17 @@ import reactor.core.publisher.Mono;
 @Slf4j
 @RequiredArgsConstructor
 public class StockAdapter implements StockClientPort {
+    @Override
+    public Mono<Void> updateStock(String productName, int quantity) {
+        // Basic implementation: call client or just return empty
+        return Mono.empty();
+    }
+
+    @Override
+    public Mono<Void> clearStock(String productName) {
+        // Basic implementation: call client or just return empty
+        return Mono.empty();
+    }
 
     private final StockApiClient client;
     private final ReactiveCircuitBreakerFactory<?, ?> cbFactory;

@@ -11,9 +11,12 @@ spring:
 
   # POSTGRESQL (R2DBC)
   r2dbc:
-    url: r2dbc:postgresql://168.119.122.86:5432/yowyob
-    username: master
-    password: Azerty1234*
+    #url: r2dbc:postgresql://168.119.122.86:5432/yowyob
+    url: r2dbc:postgresql://localhost:5432/reactivedb
+    #username: master
+    username: user
+    #password: Azerty1234*
+    password: password
 
   sql:
     init:
@@ -22,15 +25,15 @@ spring:
   # REDIS CLUSTER 
   data:
     redis:
-      host: 168.119.122.86
-      port: 7000
+      host: localhost
+      port: 6379
       password: Azerty1234*
       cluster:
         enabled: false 
 
   # KAFKA 
   kafka:
-    bootstrap-servers: 168.119.122.86:9092
+    bootstrap-servers: localhost:9092
     consumer:
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
@@ -44,11 +47,17 @@ spring:
 # CUSTOM CONFIG 
 application:
   external:
-    stock-service-url: http://168.119.122.86:8081
+    stock-service-url: http://localhost:8081
+    organisation_service-url: http:///api/organisation/
 
   kafka:
     topics:
-      product-events: test-topic
+      product-events: product-events-topic
+
+# AUTH SERVICE
+auth:
+  service:
+    url: https://auth-service.pynfi.com
 
 # RESILIENCE4J 
 resilience4j:

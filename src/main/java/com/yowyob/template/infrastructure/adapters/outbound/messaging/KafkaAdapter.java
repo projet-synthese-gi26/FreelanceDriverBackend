@@ -20,7 +20,21 @@ public class KafkaAdapter implements ProductEventPublisherPort {
 
     @Override
     public Mono<Void> publishProductCreated(Product product) {
-        return kafkaTemplate.send(productEventsTopic, product.id().toString(), product)
+        return kafkaTemplate.send(productEventsTopic, product.id() != null ? product.id().toString() : "", product)
+                .then();
+    }
+
+    @Override
+    public Mono<Void> publishProductUpdated(Product product) {
+        // Basic implementation: just log or send to Kafka if needed
+        return kafkaTemplate.send(productEventsTopic, product.id() != null ? product.id().toString() : "", product)
+                .then();
+    }
+
+    @Override
+    public Mono<Void> publishProductDeleted(Product product) {
+        // Basic implementation: just log or send to Kafka if needed
+        return kafkaTemplate.send(productEventsTopic, product.id() != null ? product.id().toString() : "", product)
                 .then();
     }
 }
