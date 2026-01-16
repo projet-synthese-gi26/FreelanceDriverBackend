@@ -3,7 +3,7 @@ server:
 
 spring:
   application:
-    name: reactive-hexagonal
+    name: freelance-driver
     
   docker:
     compose:
@@ -11,6 +11,7 @@ spring:
 
   # POSTGRESQL (R2DBC)
   r2dbc:
+<<<<<<< HEAD
     #url: r2dbc:postgresql://168.119.122.86:5432/yowyob
     url: r2dbc:postgresql://localhost:5432/reactivedb
     #username: master
@@ -18,6 +19,20 @@ spring:
     #password: Azerty1234*
     password: password
 
+=======
+    url: r2dbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:payment_db}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:password}
+    pool:
+      enabled: true
+      initial-size: 1
+      max-size: 5
+      max-idle-time: 30m
+      max-life-time: 10m
+      acquire-retry: 3
+      max-acquire-time: 30s
+      validation-query: SELECT 1
+>>>>>>> e50a7379ae43f3e39df2fb19c0a89963babb3e9e
   sql:
     init:
       mode: always
@@ -25,15 +40,25 @@ spring:
   # REDIS CLUSTER 
   data:
     redis:
+<<<<<<< HEAD
       host: localhost
       port: 6379
       password: Azerty1234*
+=======
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:7000}
+      password: ${REDIS_PASSWORD:password}
+>>>>>>> e50a7379ae43f3e39df2fb19c0a89963babb3e9e
       cluster:
-        enabled: false 
+        enabled: false
 
   # KAFKA 
   kafka:
+<<<<<<< HEAD
     bootstrap-servers: localhost:9092
+=======
+    bootstrap-servers: ${KAFKA_HOST:localhost}:${KAFKA_PORT:9092}
+>>>>>>> e50a7379ae43f3e39df2fb19c0a89963babb3e9e
     consumer:
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
@@ -47,8 +72,12 @@ spring:
 # CUSTOM CONFIG 
 application:
   external:
+<<<<<<< HEAD
     stock-service-url: http://localhost:8081
     organisation_service-url: http:///api/organisation/
+=======
+    stock-service-url: http://${EXTERNAL_HOST:localhost}:8081
+>>>>>>> e50a7379ae43f3e39df2fb19c0a89963babb3e9e
 
   kafka:
     topics:
@@ -58,6 +87,21 @@ application:
 auth:
   service:
     url: https://auth-service.pynfi.com
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: ["health","info","prometheus"]
+  endpoint:
+    health:
+      show-details: "always"
+      probes:
+        enabled: true
+  metrics:
+    export:
+      prometheus:
+        enabled: true
 
 # RESILIENCE4J 
 resilience4j:
