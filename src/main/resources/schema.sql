@@ -16,33 +16,13 @@ DROP TABLE IF EXISTS ORGANISATION CASCADE;
 
 DROP TABLE IF EXISTS products CASCADE;
 
-CREATE TABLE IF NOT EXISTS products (
+CREATE TABLE IF NOT EXISTS BusinessActor (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    organization_id UUID,
-    name VARCHAR(255),
-    description VARCHAR(500),
-    is_active BOOLEAN,
-    standard_price VARCHAR(255),
-    departure_location TEXT, -- changed from TIMESTAMPTZ, should be address or coordinates
-    arrival_location TEXT,   -- changed from TIMESTAMPTZ, should be address or coordinates
-    start_date TIMESTAMPTZ DEFAULT NOW(),
-    start_time TIME,
-    end_date TIMESTAMPTZ,
-    end_time TIME,
-    baggage_info VARCHAR(255),
-    is_negotiable BOOLEAN,
-    payment_method VARCHAR(100),
-    title VARCHAR(100),
-    status TEXT CHECK(status in ('DRAFT', 'WAITING_CONFIRMATION', 'PUBLISHED', 'IN_PROGRESS', 'CANCELLED', 'EXPIRED')),
-    created_at TIMESTAMP,
-    updated_at TIMESTAMP,
-    product_urls TEXT[],
-    regular_amount VARCHAR(200),
-    discount_percentage DECIMAL,
-    discounted_amount DECIMAL,
-    metadata TEXT[]
+    user_id TEXT,
+    name TEXT,
+    phone_number TEXT,
+    email_address TEXT
 );
-
 
 CREATE TABLE IF NOT EXISTS Organization (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -73,14 +53,35 @@ CREATE TABLE IF NOT EXISTS Organization (
     deleted_at TIMESTAMP
 );
 
-
-CREATE TABLE IF NOT EXISTS BusinessActor (
+CREATE TABLE IF NOT EXISTS products (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id TEXT,
-    name TEXT,
-    phone_number TEXT,
-    email_address TEXT
+    organization_id UUID REFERENCES Organization(id),
+    name VARCHAR(255),
+    description VARCHAR(500),
+    is_active BOOLEAN,
+    standard_price VARCHAR(255),
+    departure_location TEXT, -- changed from TIMESTAMPTZ, should be address or coordinates
+    arrival_location TEXT,   -- changed from TIMESTAMPTZ, should be address or coordinates
+    start_date TIMESTAMPTZ DEFAULT NOW(),
+    start_time TIME,
+    end_date TIMESTAMPTZ,
+    end_time TIME,
+    baggage_info VARCHAR(255),
+    is_negotiable BOOLEAN,
+    payment_method VARCHAR(100),
+    title VARCHAR(100),
+    status TEXT CHECK(status in ('DRAFT', 'WAITING_CONFIRMATION', 'PUBLISHED', 'IN_PROGRESS', 'CANCELLED', 'EXPIRED')),
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP,
+    product_urls TEXT[],
+    regular_amount VARCHAR(200),
+    discount_percentage DECIMAL,
+    discounted_amount DECIMAL,
+    metadata TEXT[]
 );
+
+
+-- ...existing code...
 
 CREATE TABLE IF NOT EXISTS Settings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

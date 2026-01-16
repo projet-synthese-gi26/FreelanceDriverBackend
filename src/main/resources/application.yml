@@ -11,17 +11,8 @@ spring:
 
   # POSTGRESQL (R2DBC)
   r2dbc:
-<<<<<<< HEAD
-    #url: r2dbc:postgresql://168.119.122.86:5432/yowyob
-    url: r2dbc:postgresql://localhost:5432/reactivedb
-    #username: master
-    username: user
-    #password: Azerty1234*
-    password: password
-
-=======
-    url: r2dbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:payment_db}
-    username: ${DB_USERNAME:postgres}
+    url: r2dbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:reactivedb}
+    username: ${DB_USERNAME:user}
     password: ${DB_PASSWORD:password}
     pool:
       enabled: true
@@ -32,7 +23,6 @@ spring:
       acquire-retry: 3
       max-acquire-time: 30s
       validation-query: SELECT 1
->>>>>>> e50a7379ae43f3e39df2fb19c0a89963babb3e9e
   sql:
     init:
       mode: always
@@ -40,25 +30,15 @@ spring:
   # REDIS CLUSTER 
   data:
     redis:
-<<<<<<< HEAD
-      host: localhost
-      port: 6379
-      password: Azerty1234*
-=======
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:7000}
       password: ${REDIS_PASSWORD:password}
->>>>>>> e50a7379ae43f3e39df2fb19c0a89963babb3e9e
       cluster:
         enabled: false
 
   # KAFKA 
   kafka:
-<<<<<<< HEAD
-    bootstrap-servers: localhost:9092
-=======
     bootstrap-servers: ${KAFKA_HOST:localhost}:${KAFKA_PORT:9092}
->>>>>>> e50a7379ae43f3e39df2fb19c0a89963babb3e9e
     consumer:
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
@@ -72,12 +52,7 @@ spring:
 # CUSTOM CONFIG 
 application:
   external:
-<<<<<<< HEAD
-    stock-service-url: http://localhost:8081
-    organisation_service-url: http:///api/organisation/
-=======
     stock-service-url: http://${EXTERNAL_HOST:localhost}:8081
->>>>>>> e50a7379ae43f3e39df2fb19c0a89963babb3e9e
 
   kafka:
     topics:
