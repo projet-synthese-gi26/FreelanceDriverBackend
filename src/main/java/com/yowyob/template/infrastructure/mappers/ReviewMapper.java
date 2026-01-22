@@ -7,7 +7,7 @@ import org.mapstruct.MappingTarget;
 import com.yowyob.template.domain.model.Review;
 import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.ReviewRequest;
 import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.ReviewResponse;
-import com.yowyob.template.infrastructure.adapters.outbound.persistence.ReviewEntity;
+import com.yowyob.template.infrastructure.adapters.outbound.persistence.entity.ReviewEntity;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.factory.Mappers;

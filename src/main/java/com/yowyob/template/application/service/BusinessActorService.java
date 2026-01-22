@@ -18,15 +18,7 @@ public class BusinessActorService implements createBusinessActorUseCase {
 
     @Override
     public Mono<BusinessActor> createBusinessActor(BusinessActor businessActor) {
-        java.sql.Timestamp now = new java.sql.Timestamp(System.currentTimeMillis());
-        BusinessActor toSave = new BusinessActor(
-                businessActor.id(),
-                businessActor.userId(),
-                businessActor.name(),
-                businessActor.phoneNumber(),
-                businessActor.emailAddress());
-        // Si le modèle BusinessActor a des champs createdAt/updatedAt, ajoute-les ici
-        return repository.save(toSave);
+        return repository.save(businessActor);
     }
 
     @Override
@@ -43,14 +35,11 @@ public class BusinessActorService implements createBusinessActorUseCase {
     public Mono<BusinessActor> updateBusinessActor(UUID id, BusinessActor businessActor) {
         return repository.findById(id)
                 .flatMap(existing -> {
-                    BusinessActor updated = new BusinessActor(
-                            id,
-                            businessActor.userId() != null ? businessActor.userId() : existing.userId(),
-                            businessActor.name() != null ? businessActor.name() : existing.name(),
-                            businessActor.phoneNumber() != null ? businessActor.phoneNumber() : existing.phoneNumber(),
-                            businessActor.emailAddress() != null ? businessActor.emailAddress()
-                                    : existing.emailAddress());
-                    return repository.save(updated);
+                    existing.setDisplayName(businessActor.getDisplayName() != null ? businessActor.getDisplayName() : existing.getDisplayName());
+                    existing.setPhoneNumber(businessActor.getPhoneNumber() != null ? businessActor.getPhoneNumber() : existing.getPhoneNumber());
+                    existing.setEmailAddress(businessActor.getEmailAddress() != null ? businessActor.getEmailAddress() : existing.getEmailAddress());
+                    existing.setAvatarUrl(businessActor.getAvatarUrl() != null ? businessActor.getAvatarUrl() : existing.getAvatarUrl());
+                    return repository.save(existing);
                 });
     }
 

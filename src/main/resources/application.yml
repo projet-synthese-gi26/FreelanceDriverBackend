@@ -52,16 +52,12 @@ spring:
 # CUSTOM CONFIG 
 application:
   external:
+    auth-service-url: ${AUTH_SERVICE_URL:https://auth-service.pynfi.com}
+    organization-service-url: ${ORGANIZATION_SERVICE_URL:https://organization-service.pynfi.com}
     stock-service-url: http://${EXTERNAL_HOST:localhost}:8081
-
   kafka:
     topics:
       product-events: product-events-topic
-
-# AUTH SERVICE
-auth:
-  service:
-    url: https://auth-service.pynfi.com
 
 management:
   endpoints:

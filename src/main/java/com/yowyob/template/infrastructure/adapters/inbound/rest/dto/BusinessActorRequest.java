@@ -6,9 +6,9 @@ import jakarta.validation.constraints.NotNull;
 import java.util.UUID;
 
 public record BusinessActorRequest(
-
         @NotBlank String userId,
         @NotBlank String name,
         @NotBlank String phoneNumber,
-        @Email String emailAddress) {
+        @Email String emailAddress,
+        String role) {
 }

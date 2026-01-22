@@ -5,7 +5,7 @@ import java.util.UUID;
 public record BusinessActorResponse(
     UUID id,
     String userId,
-    String name,
+    String displayName,
     String phoneNumber,
     String emailAddress
 ) {}

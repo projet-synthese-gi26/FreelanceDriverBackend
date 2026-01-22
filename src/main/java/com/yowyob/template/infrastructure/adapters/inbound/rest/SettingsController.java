@@ -8,6 +8,7 @@ import com.yowyob.template.infrastructure.mappers.SettingsMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -19,13 +20,14 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/settings")
 @RequiredArgsConstructor
+@Tag(name = "Settings", description = "Gestion des paramètres utilisateurs (Préférences, Thèmes, Notifications)")
 public class SettingsController {
     private final createSettingsUseCase useCase;
     private final SettingsMapper mapper;
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @Operation(summary = "Créer des paramètres", description = "Crée et sauvegarde des paramètres.")
+    @Operation(summary = "Créer des paramètres", description = "Crée et sauvegarde des paramètres pour un utilisateur.")
     @ApiResponses(value = {
         @ApiResponse(responseCode = "201", description = "Paramètres créés avec succès"),
         @ApiResponse(responseCode = "400", description = "Données invalides")

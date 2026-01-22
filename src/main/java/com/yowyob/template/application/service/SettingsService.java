@@ -19,28 +19,29 @@ public class SettingsService implements createSettingsUseCase {
     @Override
     public Mono<Settings> createSettings(Settings settings) {
         java.sql.Timestamp now = new java.sql.Timestamp(System.currentTimeMillis());
-        Settings toSave = new Settings(
-                settings.id(),
-                settings.userId(),
-                settings.theme(),
-                settings.language(),
-                settings.longRideEnabled(),
-                settings.shortRideEnabled(),
-                settings.privacyEnable(),
-                settings.allowCalls(),
-                settings.allowMessages(),
-                settings.notifyNewRides(),
-                settings.notifyRatings(),
-                settings.notifyPracticalTips(),
-                settings.notifyPromotions(),
-                settings.notifyPolicyUpdates(),
-                settings.notifyPeakHourRecommendations(),
-                settings.receiveEmail(),
-                settings.receiveSms(),
-                settings.receivePushNotifications(),
-                settings.receiveWhatsapp(),
-                settings.createdAt() != null ? settings.createdAt() : now,
-                settings.updatedAt() != null ? settings.updatedAt() : now);
+        Settings toSave = Settings.builder()
+                .id(settings.getId())
+                .userId(settings.getUserId())
+                .theme(settings.getTheme())
+                .language(settings.getLanguage())
+                .longRideEnabled(settings.getLongRideEnabled())
+                .shortRideEnabled(settings.getShortRideEnabled())
+                .privacyEnable(settings.getPrivacyEnable())
+                .allowCalls(settings.getAllowCalls())
+                .allowMessages(settings.getAllowMessages())
+                .notifyNewRides(settings.getNotifyNewRides())
+                .notifyRatings(settings.getNotifyRatings())
+                .notifyPracticalTips(settings.getNotifyPracticalTips())
+                .notifyPromotions(settings.getNotifyPromotions())
+                .notifyPolicyUpdates(settings.getNotifyPolicyUpdates())
+                .notifyPeakHourRecommendations(settings.getNotifyPeakHourRecommendations())
+                .receiveEmail(settings.getReceiveEmail())
+                .receiveSms(settings.getReceiveSms())
+                .receivePushNotifications(settings.getReceivePushNotifications())
+                .receiveWhatsapp(settings.getReceiveWhatsapp())
+                .createdAt(settings.getCreatedAt() != null ? settings.getCreatedAt() : now)
+                .updatedAt(settings.getUpdatedAt() != null ? settings.getUpdatedAt() : now)
+                .build();
         return repository.save(toSave);
     }
 
@@ -58,36 +59,37 @@ public class SettingsService implements createSettingsUseCase {
     public Mono<Settings> updateSettings(UUID id, Settings settings) {
         return repository.findById(id)
                 .flatMap(existing -> {
-                    Settings updated = new Settings(
-                            id,
-                            settings.userId() != null ? settings.userId() : existing.userId(),
-                            settings.theme() != null ? settings.theme() : existing.theme(),
-                            settings.language() != null ? settings.language() : existing.language(),
-                            settings.longRideEnabled() != null ? settings.longRideEnabled()
-                                    : existing.longRideEnabled(),
-                            settings.shortRideEnabled() != null ? settings.shortRideEnabled()
-                                    : existing.shortRideEnabled(),
-                            settings.privacyEnable() != null ? settings.privacyEnable() : existing.privacyEnable(),
-                            settings.allowCalls() != null ? settings.allowCalls() : existing.allowCalls(),
-                            settings.allowMessages() != null ? settings.allowMessages() : existing.allowMessages(),
-                            settings.notifyNewRides() != null ? settings.notifyNewRides() : existing.notifyNewRides(),
-                            settings.notifyRatings() != null ? settings.notifyRatings() : existing.notifyRatings(),
-                            settings.notifyPracticalTips() != null ? settings.notifyPracticalTips()
-                                    : existing.notifyPracticalTips(),
-                            settings.notifyPromotions() != null ? settings.notifyPromotions()
-                                    : existing.notifyPromotions(),
-                            settings.notifyPolicyUpdates() != null ? settings.notifyPolicyUpdates()
-                                    : existing.notifyPolicyUpdates(),
-                            settings.notifyPeakHourRecommendations() != null ? settings.notifyPeakHourRecommendations()
-                                    : existing.notifyPeakHourRecommendations(),
-                            settings.receiveEmail() != null ? settings.receiveEmail() : existing.receiveEmail(),
-                            settings.receiveSms() != null ? settings.receiveSms() : existing.receiveSms(),
-                            settings.receivePushNotifications() != null ? settings.receivePushNotifications()
-                                    : existing.receivePushNotifications(),
-                            settings.receiveWhatsapp() != null ? settings.receiveWhatsapp()
-                                    : existing.receiveWhatsapp(),
-                            settings.createdAt() != null ? settings.createdAt() : existing.createdAt(),
-                            settings.updatedAt() != null ? settings.updatedAt() : existing.updatedAt());
+                    Settings updated = Settings.builder()
+                            .id(id)
+                            .userId(settings.getUserId() != null ? settings.getUserId() : existing.getUserId())
+                            .theme(settings.getTheme() != null ? settings.getTheme() : existing.getTheme())
+                            .language(settings.getLanguage() != null ? settings.getLanguage() : existing.getLanguage())
+                            .longRideEnabled(settings.getLongRideEnabled() != null ? settings.getLongRideEnabled()
+                                    : existing.getLongRideEnabled())
+                            .shortRideEnabled(settings.getShortRideEnabled() != null ? settings.getShortRideEnabled()
+                                    : existing.getShortRideEnabled())
+                            .privacyEnable(settings.getPrivacyEnable() != null ? settings.getPrivacyEnable() : existing.getPrivacyEnable())
+                            .allowCalls(settings.getAllowCalls() != null ? settings.getAllowCalls() : existing.getAllowCalls())
+                            .allowMessages(settings.getAllowMessages() != null ? settings.getAllowMessages() : existing.getAllowMessages())
+                            .notifyNewRides(settings.getNotifyNewRides() != null ? settings.getNotifyNewRides() : existing.getNotifyNewRides())
+                            .notifyRatings(settings.getNotifyRatings() != null ? settings.getNotifyRatings() : existing.getNotifyRatings())
+                            .notifyPracticalTips(settings.getNotifyPracticalTips() != null ? settings.getNotifyPracticalTips()
+                                    : existing.getNotifyPracticalTips())
+                            .notifyPromotions(settings.getNotifyPromotions() != null ? settings.getNotifyPromotions()
+                                    : existing.getNotifyPromotions())
+                            .notifyPolicyUpdates(settings.getNotifyPolicyUpdates() != null ? settings.getNotifyPolicyUpdates()
+                                    : existing.getNotifyPolicyUpdates())
+                            .notifyPeakHourRecommendations(settings.getNotifyPeakHourRecommendations() != null ? settings.getNotifyPeakHourRecommendations()
+                                    : existing.getNotifyPeakHourRecommendations())
+                            .receiveEmail(settings.getReceiveEmail() != null ? settings.getReceiveEmail() : existing.getReceiveEmail())
+                            .receiveSms(settings.getReceiveSms() != null ? settings.getReceiveSms() : existing.getReceiveSms())
+                            .receivePushNotifications(settings.getReceivePushNotifications() != null ? settings.getReceivePushNotifications()
+                                    : existing.getReceivePushNotifications())
+                            .receiveWhatsapp(settings.getReceiveWhatsapp() != null ? settings.getReceiveWhatsapp()
+                                    : existing.getReceiveWhatsapp())
+                            .createdAt(existing.getCreatedAt())
+                            .updatedAt(new java.sql.Timestamp(System.currentTimeMillis()))
+                            .build();
                     return repository.save(updated);
                 });
     }

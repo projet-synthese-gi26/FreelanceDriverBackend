@@ -42,4 +42,16 @@ public class ProductEntity {
     private BigDecimal discountPercentage;
     private BigDecimal discountedAmount;
     private List<String> metadata;
+    private String productType; // ANNONCE, PLANNING, CV
+
+    // Annonce specific
+    private OffsetDateTime requiredDate;
+    private String category;
+
+    // CV specific
+    private List<String> skills;
+    private String fileUrl;
+
+    // Planning specific
+    private Integer availableSeats;
 }

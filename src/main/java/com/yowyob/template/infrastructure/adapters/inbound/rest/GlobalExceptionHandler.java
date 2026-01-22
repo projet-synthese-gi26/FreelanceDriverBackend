@@ -1,5 +1,6 @@
 package com.yowyob.template.infrastructure.adapters.inbound.rest;
 
+import com.yowyob.template.domain.exception.BadCredentialsException;
 import com.yowyob.template.domain.exception.StockFullException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -10,6 +11,13 @@ import java.net.URI;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(BadCredentialsException.class)
+    public ProblemDetail handleBadCredentialsException(BadCredentialsException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, ex.getMessage());
+        problem.setTitle("Authentication Failed");
+        return problem;
+    }
 
     @ExceptionHandler(StockFullException.class)
     public ProblemDetail handleStockException(StockFullException ex) {

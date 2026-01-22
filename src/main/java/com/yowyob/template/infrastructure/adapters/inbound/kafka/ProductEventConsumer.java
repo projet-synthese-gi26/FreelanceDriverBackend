@@ -15,7 +15,7 @@ public class ProductEventConsumer {
 
     @KafkaListener(topics = "${application.kafka.topics.product-events}", groupId = "template-group")
     public void consume(Product product) {
-        log.info("CONSUMER: I received an event for product with id : {} and standardPrice : {}", 
-             product.name(), product.standardPrice());
+        log.info("CONSUMER: I received an event for product with name : {} and standardPrice : {}", 
+             product.getName(), product.getStandardPrice());
     }
 }

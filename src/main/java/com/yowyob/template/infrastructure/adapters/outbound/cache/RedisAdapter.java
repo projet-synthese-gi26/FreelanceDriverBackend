@@ -17,7 +17,7 @@ public class RedisAdapter implements ProductCachePort {
     @Override
     public Mono<Boolean> saveInCache(Product product) {
         return redisTemplate.opsForValue()
-                .set("product:" + product.id(), product, Duration.ofMinutes(10));
+                .set("product:" + product.getId(), product, Duration.ofMinutes(10));
     }
 
     @Override

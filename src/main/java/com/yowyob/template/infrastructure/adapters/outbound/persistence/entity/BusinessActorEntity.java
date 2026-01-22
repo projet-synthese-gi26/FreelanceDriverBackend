@@ -14,8 +14,9 @@ import java.util.UUID;
 public class BusinessActorEntity {
     @Id
     private UUID id;
-    private String userId;
-    private String name;
+    private UUID userId;
+    private String displayName;
     private String phoneNumber;
     private String emailAddress;
+    private String avatarUrl;
 }

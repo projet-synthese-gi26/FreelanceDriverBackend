@@ -20,26 +20,27 @@ public class ContactService implements CreateContactUseCase {
     public Mono<Contact> createContact(Contact contact) {
         // Ajoute les timestamps si absents
         java.sql.Timestamp now = new java.sql.Timestamp(System.currentTimeMillis());
-        Contact toSave = new Contact(
-                contact.id(),
-                contact.contactableId(),
-                contact.contactableType(),
-                contact.firstName(),
-                contact.lastName(),
-                contact.title(),
-                contact.isEmailVerified(),
-                contact.isPhoneNumberVerified(),
-                contact.isFavorite(),
-                contact.phoneNumber(),
-                contact.secondaryPhoneNumber(),
-                contact.faxNumber(),
-                contact.email(),
-                contact.secondaryEmail(),
-                contact.emailVerifiedAt(),
-                contact.phoneVerifiedAt(),
-                contact.createdAt() != null ? contact.createdAt() : now,
-                contact.updatedAt() != null ? contact.updatedAt() : now,
-                contact.deletedAt());
+        Contact toSave = Contact.builder()
+                .id(contact.getId())
+                .contactableId(contact.getContactableId())
+                .contactableType(contact.getContactableType())
+                .firstName(contact.getFirstName())
+                .lastName(contact.getLastName())
+                .title(contact.getTitle())
+                .isEmailVerified(contact.getIsEmailVerified())
+                .isPhoneNumberVerified(contact.getIsPhoneNumberVerified())
+                .isFavorite(contact.getIsFavorite())
+                .phoneNumber(contact.getPhoneNumber())
+                .secondaryPhoneNumber(contact.getSecondaryPhoneNumber())
+                .faxNumber(contact.getFaxNumber())
+                .email(contact.getEmail())
+                .secondaryEmail(contact.getSecondaryEmail())
+                .emailVerifiedAt(contact.getEmailVerifiedAt())
+                .phoneVerifiedAt(contact.getPhoneVerifiedAt())
+                .createdAt(contact.getCreatedAt() != null ? contact.getCreatedAt() : now)
+                .updatedAt(contact.getUpdatedAt() != null ? contact.getUpdatedAt() : now)
+                .deletedAt(contact.getDeletedAt())
+                .build();
         return repository.save(toSave);
     }
 
@@ -57,28 +58,29 @@ public class ContactService implements CreateContactUseCase {
     public Mono<Contact> updateContact(UUID id, Contact contact) {
         return repository.findById(id)
                 .flatMap(existing -> {
-                    Contact updated = new Contact(
-                            id,
-                            contact.contactableId() != null ? contact.contactableId() : existing.contactableId(),
-                            contact.contactableType() != null ? contact.contactableType() : existing.contactableType(),
-                            contact.firstName() != null ? contact.firstName() : existing.firstName(),
-                            contact.lastName() != null ? contact.lastName() : existing.lastName(),
-                            contact.title() != null ? contact.title() : existing.title(),
-                            contact.isEmailVerified() != null ? contact.isEmailVerified() : existing.isEmailVerified(),
-                            contact.isPhoneNumberVerified() != null ? contact.isPhoneNumberVerified()
-                                    : existing.isPhoneNumberVerified(),
-                            contact.isFavorite() != null ? contact.isFavorite() : existing.isFavorite(),
-                            contact.phoneNumber() != null ? contact.phoneNumber() : existing.phoneNumber(),
-                            contact.secondaryPhoneNumber() != null ? contact.secondaryPhoneNumber()
-                                    : existing.secondaryPhoneNumber(),
-                            contact.faxNumber() != null ? contact.faxNumber() : existing.faxNumber(),
-                            contact.email() != null ? contact.email() : existing.email(),
-                            contact.secondaryEmail() != null ? contact.secondaryEmail() : existing.secondaryEmail(),
-                            contact.emailVerifiedAt() != null ? contact.emailVerifiedAt() : existing.emailVerifiedAt(),
-                            contact.phoneVerifiedAt() != null ? contact.phoneVerifiedAt() : existing.phoneVerifiedAt(),
-                            contact.createdAt() != null ? contact.createdAt() : existing.createdAt(),
-                            contact.updatedAt() != null ? contact.updatedAt() : existing.updatedAt(),
-                            contact.deletedAt() != null ? contact.deletedAt() : existing.deletedAt());
+                    Contact updated = Contact.builder()
+                            .id(id)
+                            .contactableId(contact.getContactableId() != null ? contact.getContactableId() : existing.getContactableId())
+                            .contactableType(contact.getContactableType() != null ? contact.getContactableType() : existing.getContactableType())
+                            .firstName(contact.getFirstName() != null ? contact.getFirstName() : existing.getFirstName())
+                            .lastName(contact.getLastName() != null ? contact.getLastName() : existing.getLastName())
+                            .title(contact.getTitle() != null ? contact.getTitle() : existing.getTitle())
+                            .isEmailVerified(contact.getIsEmailVerified() != null ? contact.getIsEmailVerified() : existing.getIsEmailVerified())
+                            .isPhoneNumberVerified(contact.getIsPhoneNumberVerified() != null ? contact.getIsPhoneNumberVerified()
+                                    : existing.getIsPhoneNumberVerified())
+                            .isFavorite(contact.getIsFavorite() != null ? contact.getIsFavorite() : existing.getIsFavorite())
+                            .phoneNumber(contact.getPhoneNumber() != null ? contact.getPhoneNumber() : existing.getPhoneNumber())
+                            .secondaryPhoneNumber(contact.getSecondaryPhoneNumber() != null ? contact.getSecondaryPhoneNumber()
+                                    : existing.getSecondaryPhoneNumber())
+                            .faxNumber(contact.getFaxNumber() != null ? contact.getFaxNumber() : existing.getFaxNumber())
+                            .email(contact.getEmail() != null ? contact.getEmail() : existing.getEmail())
+                            .secondaryEmail(contact.getSecondaryEmail() != null ? contact.getSecondaryEmail() : existing.getSecondaryEmail())
+                            .emailVerifiedAt(contact.getEmailVerifiedAt() != null ? contact.getEmailVerifiedAt() : existing.getEmailVerifiedAt())
+                            .phoneVerifiedAt(contact.getPhoneVerifiedAt() != null ? contact.getPhoneVerifiedAt() : existing.getPhoneVerifiedAt())
+                            .createdAt(existing.getCreatedAt())
+                            .updatedAt(new java.sql.Timestamp(System.currentTimeMillis()))
+                            .deletedAt(contact.getDeletedAt() != null ? contact.getDeletedAt() : existing.getDeletedAt())
+                            .build();
                     return repository.save(updated);
                 });
     }

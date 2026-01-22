@@ -1,30 +1,22 @@
-CREATE TABLE IF NOT EXISTS Review (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    ride_id UUID,
-    author_id UUID,
-    subject_id UUID,
-    rating INT,
-    comment TEXT,
-    created_at TIMESTAMP DEFAULT NOW()
-);
+DROP TABLE IF EXISTS products CASCADE;
+DROP TABLE IF EXISTS Organization CASCADE;
+DROP TABLE IF EXISTS BusinessActor CASCADE;
+DROP TABLE IF EXISTS Review CASCADE;
+DROP TABLE IF EXISTS reactions CASCADE;
+DROP TABLE IF EXISTS Settings CASCADE;
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
-
-DROP TABLE IF EXISTS ORGANISATION CASCADE;
-
-
-DROP TABLE IF EXISTS products CASCADE;
-
-CREATE TABLE IF NOT EXISTS BusinessActor (
+CREATE TABLE BusinessActor (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id TEXT,
-    name TEXT,
+    user_id UUID,
+    display_name TEXT,
     phone_number TEXT,
-    email_address TEXT
+    email_address TEXT,
+    avatar_url TEXT
 );
 
-CREATE TABLE IF NOT EXISTS Organization (
+CREATE TABLE Organization (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     business_actor_id UUID REFERENCES BusinessActor(id),
     logo_id TEXT,
@@ -50,10 +42,11 @@ CREATE TABLE IF NOT EXISTS Organization (
     status TEXT,
     created_at TIMESTAMP,
     updated_at TIMESTAMP,
-    deleted_at TIMESTAMP
+    deleted_at TIMESTAMP,
+    syndicate_name VARCHAR(255)
 );
 
-CREATE TABLE IF NOT EXISTS products (
+CREATE TABLE products (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_id UUID REFERENCES Organization(id),
     name VARCHAR(255),
@@ -77,7 +70,40 @@ CREATE TABLE IF NOT EXISTS products (
     regular_amount VARCHAR(200),
     discount_percentage DECIMAL,
     discounted_amount DECIMAL,
-    metadata TEXT[]
+    metadata TEXT[],
+    product_type VARCHAR(50),
+    required_date TIMESTAMPTZ,
+    category VARCHAR(255),
+    skills TEXT[],
+    file_url TEXT,
+    available_seats INT
+);
+
+CREATE TABLE Review (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    ride_id UUID,
+    author_id UUID,
+    subject_id UUID,
+    subject_type TEXT,
+    rating INT,
+    comment TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE reactions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    actor_id UUID,
+    target_id UUID,
+    target_type TEXT,
+    type TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE Settings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    business_actor_id UUID REFERENCES BusinessActor(id),
+    key TEXT,
+    value TEXT
 );
 
 
@@ -153,10 +179,4 @@ CREATE TABLE IF NOT EXISTS Contact (
     deleted_at TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS BusinessActor (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id TEXT,
-    name TEXT,
-    phone_number TEXT,
-    email_address TEXT
-);
+-- Removed duplicate BusinessActor definition
