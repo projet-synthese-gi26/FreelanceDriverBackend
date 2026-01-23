@@ -7,5 +7,5 @@ import reactor.core.publisher.Mono;
 
 public interface AuthClientPort {
     Mono<AuthResponse> login(String identifier, String password);
-    Mono<TraMaSysUserResponse> registerUser(RegisterRequest request);
+    Mono<AuthResponse> registerUser(RegisterRequest request);
 }

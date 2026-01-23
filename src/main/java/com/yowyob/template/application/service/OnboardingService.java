@@ -5,7 +5,7 @@ import com.yowyob.template.domain.ports.out.*;
 import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.FullOnboardingRequest;
 import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.UserProfileResponse;
 import com.yowyob.template.infrastructure.adapters.outbound.external.dto.RegisterRequest;
-import com.yowyob.template.infrastructure.adapters.outbound.external.dto.TraMaSysUserResponse;
+import com.yowyob.template.infrastructure.adapters.outbound.external.dto.AuthResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
@@ -18,9 +18,6 @@ public class OnboardingService {
     private final AuthClientPort authClientPort;
     private final BusinessActorRepositoryPort actorRepository;
     private final OrganisationRepositoryPort organisationRepository;
-    private final ContactRepositoryPort contactRepository;
-    private final AddressRepositoryPort addressRepository;
-    private final SettingsRepositoryPort settingsRepository;
 
     public Mono<UserProfileResponse> registerAndOnboard(FullOnboardingRequest request) {
         RegisterRequest registerRequest = RegisterRequest.builder()
@@ -35,7 +32,8 @@ public class OnboardingService {
                 .build();
 
         return authClientPort.registerUser(registerRequest)
-                .flatMap(externalUser -> {
+                .flatMap(authResponse -> {
+                    var externalUser = authResponse.user();
                     UUID userId = UUID.fromString(externalUser.id());
                     User user = User.builder()
                             .id(userId)
@@ -47,11 +45,11 @@ public class OnboardingService {
                             .build();
 
                     return onboardBusinessActor(user, request.getRoleType(), request.getOrganisationName(),
-                            request.getOrganisationDescription(), request.getPhone(), request.getTitle(), request.getAddress());
+                            request.getOrganisationDescription(), request.getPhone(), request.getTitle(), request.getAddress(), authResponse.accessToken(), authResponse.refreshToken());
                 });
     }
 
-    public Mono<UserProfileResponse> becomeDriver(UUID userId, com.yowyob.template.infrastructure.adapters.inbound.rest.dto.NewRoleRequest request) {
+    public Mono<UserProfileResponse> becomeDriver(UUID userId, com.yowyob.template.infrastructure.adapters.inbound.rest.dto.NewRoleRequest request, String accessToken) {
         User user = User.builder()
                 .id(userId)
                 .email(request.getEmail())
@@ -59,10 +57,10 @@ public class OnboardingService {
                 .lastName(request.getLastName())
                 .build();
         return onboardBusinessActor(user, "DRIVER", request.getOrganisationName(),
-                request.getOrganisationDescription(), request.getPhone(), request.getTitle(), request.getAddress());
+                request.getOrganisationDescription(), request.getPhone(), request.getTitle(), request.getAddress(), accessToken, null);
     }
 
-    public Mono<UserProfileResponse> becomeClient(UUID userId, com.yowyob.template.infrastructure.adapters.inbound.rest.dto.NewRoleRequest request) {
+    public Mono<UserProfileResponse> becomeClient(UUID userId, com.yowyob.template.infrastructure.adapters.inbound.rest.dto.NewRoleRequest request, String accessToken) {
         User user = User.builder()
                 .id(userId)
                 .email(request.getEmail())
@@ -70,10 +68,10 @@ public class OnboardingService {
                 .lastName(request.getLastName())
                 .build();
         return onboardBusinessActor(user, "CLIENT", request.getOrganisationName(),
-                request.getOrganisationDescription(), request.getPhone(), request.getTitle(), request.getAddress());
+                request.getOrganisationDescription(), request.getPhone(), request.getTitle(), request.getAddress(), accessToken, null);
     }
 
-    private Mono<UserProfileResponse> onboardBusinessActor(User user, String roleType, String orgName, String orgDesc, String phone, String title, String addressString) {
+    private Mono<UserProfileResponse> onboardBusinessActor(User user, String roleType, String orgName, String orgDesc, String phone, String title, String addressString, String accessToken, String refreshToken) {
         // 2. Create BusinessActor
         BusinessActor actor;
         if ("DRIVER".equalsIgnoreCase(roleType)) {
@@ -90,7 +88,7 @@ public class OnboardingService {
                     .build();
         }
 
-        return actorRepository.save(actor)
+        return actorRepository.save(actor, accessToken)
                 .flatMap(savedActor -> {
                     // 3. Create Organisation
                     OrganisationBuilder builder = new OrganisationBuilder()
@@ -108,48 +106,14 @@ public class OnboardingService {
                     organisation.setEmail(user.getEmail());
                     organisation.setService(savedActor instanceof DriverRole ? "LETS_GO" : "IT_SERVICES");
 
-                    return organisationRepository.save(organisation)
-                            .flatMap(savedOrg -> {
-                                // 4. Create Contact
-                                Contact contact = Contact.builder()
-                                        .contactableId(savedOrg.getId())
-                                        .contactableType("ORGANIZATION")
-                                        .firstName(user.getFirstName())
-                                        .lastName(user.getLastName())
-                                        .email(user.getEmail())
-                                        .phoneNumber(phone)
-                                        .title(title != null ? title : "Owner")
-                                        .isFavorite(true)
-                                        .build();
-
-                                // 5. Create Address
-                                Address address = Address.builder()
-                                        .addressableId(savedOrg.getId())
-                                        .addressableType("ORGANIZATION")
-                                        .type("HEADQUARTER")
-                                        .city(addressString != null ? addressString : "Douala")
-                                        .addressLine1("Unknown")
-                                        .isDefault(true)
-                                        .countryId(user.getId())
-                                        .build();
-
-                                // 6. Create Settings
-                                Settings settings = Settings.builder()
-                                        .userId(user.getId().toString())
-                                        .theme("light")
-                                        .notificationsEnabled(true)
-                                        .build();
-
-                                return Mono.zip(
-                                        contactRepository.save(contact),
-                                        addressRepository.save(address),
-                                        settingsRepository.save(settings)
-                                ).map(tuple -> UserProfileResponse.builder()
-                                        .user(user)
-                                        .actor(savedActor)
-                                        .organisation(savedOrg)
-                                        .build());
-                            });
+                    return organisationRepository.save(organisation, accessToken)
+                            .map(savedOrg -> UserProfileResponse.builder()
+                                    .accessToken(accessToken)
+                                    .refreshToken(refreshToken)
+                                    .user(user)
+                                    .actor(savedActor)
+                                    .organisation(savedOrg)
+                                    .build());
                 });
     }
 }

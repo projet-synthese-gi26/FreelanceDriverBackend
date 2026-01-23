@@ -2,7 +2,7 @@ package com.yowyob.template.infrastructure.adapters.inbound.rest;
 
 import com.yowyob.template.domain.ports.in.AuthUseCase;
 import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.LoginRequest;
-import com.yowyob.template.infrastructure.adapters.outbound.external.dto.AuthResponse;
+import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.UserProfileResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -21,8 +21,8 @@ public class AuthController {
     private final AuthUseCase authUseCase;
 
     @PostMapping("/login")
-    @Operation(summary = "Connexion utilisateur", description = "Permet à un utilisateur de se connecter avec son identifiant et son mot de passe. Retourne un token JWT.")
-    public Mono<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
+    @Operation(summary = "Connexion utilisateur", description = "Permet à un utilisateur de se connecter avec son identifiant et son mot de passe. Retourne un token JWT et le profil complet.")
+    public Mono<UserProfileResponse> login(@Valid @RequestBody LoginRequest request) {
         return authUseCase.login(request.identifier(), request.password());
     }
 }

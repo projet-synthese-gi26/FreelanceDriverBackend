@@ -31,9 +31,20 @@ public class BusinessActorExternalAdapter implements BusinessActorRepositoryPort
 
     @Override
     public Mono<BusinessActor> save(BusinessActor businessActor) {
+        return save(businessActor, null);
+    }
+
+    @Override
+    public Mono<BusinessActor> save(BusinessActor businessActor, String jwtToken) {
         ExternalBusinessActorRequest request = mapToRequest(businessActor);
-        return getClient().post()
-                .uri("/api/v1/business-actors")
+        var requestSpec = getClient().post()
+                .uri("/api/v1/business-actors");
+        
+        if (jwtToken != null && !jwtToken.isEmpty()) {
+            requestSpec.header("Authorization", "Bearer " + jwtToken);
+        }
+
+        return requestSpec
                 .bodyValue(request)
                 .retrieve()
                 .bodyToMono(ExternalBusinessActorResponse.class)
@@ -46,6 +57,29 @@ public class BusinessActorExternalAdapter implements BusinessActorRepositoryPort
                 .uri("/api/v1/business-actors/{id}", id)
                 .retrieve()
                 .bodyToMono(ExternalBusinessActorResponse.class)
+                .map(this::mapToDomain);
+    }
+
+    @Override
+    public Mono<BusinessActor> findByUserId(UUID userId) {
+        return findByUserId(userId, null);
+    }
+
+    @Override
+    public Mono<BusinessActor> findByUserId(UUID userId, String jwtToken) {
+        var requestSpec = getClient().get()
+                .uri(uriBuilder -> uriBuilder.path("/api/v1/business-actors")
+                        .queryParam("authUserId", userId)
+                        .build());
+                        
+        if (jwtToken != null && !jwtToken.isEmpty()) {
+            requestSpec.header("Authorization", "Bearer " + jwtToken);
+        }
+
+        return requestSpec
+                .retrieve()
+                .bodyToFlux(ExternalBusinessActorResponse.class)
+                .next() // Get first match
                 .map(this::mapToDomain);
     }
 

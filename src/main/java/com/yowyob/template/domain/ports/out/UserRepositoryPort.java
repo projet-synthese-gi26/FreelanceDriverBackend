@@ -8,6 +8,7 @@ import java.util.UUID;
 
 public interface UserRepositoryPort {
     Mono<User> findById(UUID id);
+    Mono<User> findById(UUID id, String jwtToken);
     Mono<User> findByEmail(String email);
     Mono<User> updateUser(UUID id, User user);
     Mono<Void> updatePassword(UUID id, String currentPassword, String newPassword);

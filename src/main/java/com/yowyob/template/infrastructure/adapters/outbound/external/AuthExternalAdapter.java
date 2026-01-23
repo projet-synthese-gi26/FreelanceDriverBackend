@@ -44,7 +44,7 @@ public class AuthExternalAdapter implements AuthClientPort {
     }
 
     @Override
-    public Mono<TraMaSysUserResponse> registerUser(RegisterRequest request) {
+    public Mono<AuthResponse> registerUser(RegisterRequest request) {
         MultipartBodyBuilder bodyBuilder = new MultipartBodyBuilder();
         bodyBuilder.part("data", request, MediaType.APPLICATION_JSON);
         // If file was needed: bodyBuilder.part("file", resource);
@@ -59,7 +59,6 @@ public class AuthExternalAdapter implements AuthClientPort {
                     response.bodyToMono(String.class)
                             .flatMap(body -> Mono.error(new RuntimeException("Registration failed: " + body)))
                 )
-                .bodyToMono(AuthResponse.class)
-                .map(AuthResponse::user);
+                .bodyToMono(AuthResponse.class);
     }
 }

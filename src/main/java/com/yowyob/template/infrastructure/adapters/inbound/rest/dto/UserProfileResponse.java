@@ -13,6 +13,8 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class UserProfileResponse {
+    private String accessToken;
+    private String refreshToken;
     private User user;
     private BusinessActor actor;
     private Organisation organisation;

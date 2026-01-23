@@ -28,6 +28,11 @@ public class AddressExternalAdapter implements AddressRepositoryPort {
 
     @Override
     public Mono<Address> save(Address address) {
+        return save(address, null);
+    }
+
+    @Override
+    public Mono<Address> save(Address address, String jwtToken) {
         ExternalAddressRequest request = new ExternalAddressRequest(
             address.getAddressableId(),
             address.getAddressableType(),
@@ -46,15 +51,50 @@ public class AddressExternalAdapter implements AddressRepositoryPort {
             0.0, // lat
             0.0 // lon
         );
-        
-        // Correction on ID mapping:
-        // The Request needs `addressableId` which is the Org ID.
-        // The Domain `Address` object might define it, or I need to pass it.
-        // I will suspect `Address` has it or I need to find a way to set it.
-        // I'll check Address.java again in a moment.
-        
-        return getClient().post()
-                .uri("/api/v1/addresses")
+
+        var requestSpec = getClient().post()
+                .uri("/api/v1/addresses");
+
+        if (jwtToken != null && !jwtToken.isEmpty()) {
+            requestSpec.header("Authorization", "Bearer " + jwtToken);
+        }
+
+        return requestSpec
+                .bodyValue(request)
+                .retrieve()
+                .bodyToMono(ExternalAddressResponse.class)
+                .map(this::mapToDomain);
+    }
+
+    @Override
+    public Mono<Address> update(Address address, String jwtToken) {
+        ExternalAddressRequest request = new ExternalAddressRequest(
+            address.getAddressableId(),
+            address.getAddressableType(),
+            address.getType(),
+            address.getAddressLine1(),
+            address.getAddressLine2(),
+            address.getCity(),
+            address.getState(),
+            address.getLocality(),
+            address.getZipCode(),
+            null, // countryId
+            address.getPoBox(),
+            address.getNeighborhood(),
+            address.getInformalDescription(),
+            address.getIsDefault(),
+            address.getLatitude() != null ? address.getLatitude() : 0.0,
+            address.getLongitude() != null ? address.getLongitude() : 0.0
+        );
+
+        var requestSpec = getClient().put()
+                .uri("/api/v1/addresses/{id}", address.getId());
+
+        if (jwtToken != null && !jwtToken.isEmpty()) {
+            requestSpec.header("Authorization", "Bearer " + jwtToken);
+        }
+
+        return requestSpec
                 .bodyValue(request)
                 .retrieve()
                 .bodyToMono(ExternalAddressResponse.class)
@@ -72,9 +112,37 @@ public class AddressExternalAdapter implements AddressRepositoryPort {
     }
 
     @Override
+    public Flux<Address> findAllByAddressableId(UUID addressableId, String jwtToken) {
+        var requestSpec = getClient().get()
+                .uri(uriBuilder -> uriBuilder.path("/api/v1/addresses")
+                        .queryParam("addressableId", addressableId)
+                        .build());
+                        
+        if (jwtToken != null && !jwtToken.isEmpty()) {
+            requestSpec.header("Authorization", "Bearer " + jwtToken);
+        }
+
+        return requestSpec
+                .retrieve()
+                .bodyToFlux(ExternalAddressResponse.class)
+                .map(this::mapToDomain);
+    }
+
+    @Override
     public Mono<Void> deleteById(UUID id) {
-        return getClient().delete()
-                .uri("/api/v1/addresses/{id}", id)
+        return deleteById(id, null);
+    }
+
+    @Override
+    public Mono<Void> deleteById(UUID id, String jwtToken) {
+        var requestSpec = getClient().delete()
+                .uri("/api/v1/addresses/{id}", id);
+
+        if (jwtToken != null && !jwtToken.isEmpty()) {
+            requestSpec.header("Authorization", "Bearer " + jwtToken);
+        }
+        
+        return requestSpec
                 .retrieve()
                 .bodyToMono(Void.class);
     }

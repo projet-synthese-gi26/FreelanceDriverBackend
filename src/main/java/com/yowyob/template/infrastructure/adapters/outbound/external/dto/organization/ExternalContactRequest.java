@@ -13,5 +13,7 @@ public record ExternalContactRequest(
     String secondaryPhoneNumber,
     String faxNumber,
     String secondaryEmail,
-    Boolean isFavorite
+    Boolean isFavorite,
+    Boolean isEmailVerified,
+    Boolean isPhoneNumberVerified
 ) {}

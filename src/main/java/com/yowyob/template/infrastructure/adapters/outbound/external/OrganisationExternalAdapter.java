@@ -30,9 +30,20 @@ public class OrganisationExternalAdapter implements OrganisationRepositoryPort {
 
     @Override
     public Mono<Organisation> save(Organisation organisation) {
+        return save(organisation, null);
+    }
+
+    @Override
+    public Mono<Organisation> save(Organisation organisation, String jwtToken) {
         ExternalOrganizationRequest request = mapToRequest(organisation);
-        return getClient().post()
-                .uri("/api/v1/organizations")
+        var requestSpec = getClient().post()
+                .uri("/api/v1/organizations");
+
+        if (jwtToken != null && !jwtToken.isEmpty()) {
+            requestSpec.header("Authorization", "Bearer " + jwtToken);
+        }
+
+        return requestSpec
                 .bodyValue(request)
                 .retrieve()
                 .bodyToMono(ExternalOrganizationResponse.class)
@@ -45,35 +56,55 @@ public class OrganisationExternalAdapter implements OrganisationRepositoryPort {
                 .uri("/api/v1/organizations/{id}", id)
                 .retrieve()
                 .bodyToMono(ExternalOrganizationResponse.class);
+        return enrichOrganisation(orgMono);
+    }
 
-        Mono<List<ExternalCertificationResponse>> certsMono = getClient().get()
-                .uri("/api/v1/certifications/organization/{id}", id)
+    @Override
+    public Mono<Organisation> findByActorId(UUID actorId) {
+         return findByActorId(actorId, null);
+    }
+
+    @Override
+    public Mono<Organisation> findByActorId(UUID actorId, String jwtToken) {
+        var requestSpec = getClient().get()
+                .uri(uriBuilder -> uriBuilder.path("/api/v1/organizations")
+                        .queryParam("actorId", actorId)
+                        .build());
+                        
+        if (jwtToken != null && !jwtToken.isEmpty()) {
+            requestSpec.header("Authorization", "Bearer " + jwtToken);
+        }
+
+        return requestSpec
+                .retrieve()
+                .bodyToFlux(ExternalOrganizationResponse.class)
+                .next()
+                .flatMap(orgResponse -> enrichOrganisation(Mono.just(orgResponse)));
+    }
+
+    private Mono<Organisation> enrichOrganisation(Mono<ExternalOrganizationResponse> orgMono) {
+         return orgMono.flatMap(orgResponse -> {
+            Mono<List<ExternalCertificationResponse>> certsMono = getClient().get()
+                .uri("/api/v1/certifications/organization/{id}", orgResponse.id())
                 .retrieve()
                 .bodyToFlux(ExternalCertificationResponse.class)
                 .collectList()
-                .onErrorResume(e -> Mono.just(Collections.emptyList())); // Fallback if 404 or error
+                .onErrorResume(e -> Mono.just(Collections.emptyList()));
 
-        return Mono.zip(orgMono, certsMono)
-                .map(tuple -> {
-                    ExternalOrganizationResponse orgResponse = tuple.getT1();
-                    List<ExternalCertificationResponse> certs = tuple.getT2();
-                    
-                    Organisation baseOrg = mapToDomainBasic(orgResponse);
-                    
-                    if (!certs.isEmpty()) {
-                        // Decorate
-                        CertifiedOrganisation certifiedOrg = new CertifiedOrganisation();
-                        certifiedOrg.setWrappedOrganisation(baseOrg);
-                        certifiedOrg.setSyndicateName(certs.get(0).name()); // Use first cert name as syndicate/label
-                        // Copy basic fields to the wrapper if needed, or rely on delegation
-                        certifiedOrg.setId(baseOrg.getId());
-                        certifiedOrg.setName(baseOrg.getName());
-                        certifiedOrg.setActorId(baseOrg.getActorId());
-                        return certifiedOrg;
-                    }
-                    
-                    return baseOrg;
-                });
+            return certsMono.map(certs -> {
+                Organisation baseOrg = mapToDomainBasic(orgResponse);
+                if (!certs.isEmpty()) {
+                    CertifiedOrganisation certifiedOrg = new CertifiedOrganisation();
+                    certifiedOrg.setWrappedOrganisation(baseOrg);
+                    certifiedOrg.setSyndicateName(certs.get(0).name());
+                    certifiedOrg.setId(baseOrg.getId());
+                    certifiedOrg.setName(baseOrg.getName());
+                    certifiedOrg.setActorId(baseOrg.getActorId());
+                    return certifiedOrg;
+                }
+                return baseOrg;
+            });
+        });
     }
 
     @Override
@@ -135,9 +166,28 @@ public class OrganisationExternalAdapter implements OrganisationRepositoryPort {
         org.setTaxId(response.taxNumber());
         org.setWebsiteUrl(response.websiteUrl());
         org.setSocialNetwork(response.socialNetwork());
-        
-        // Map other fields
-        
+       
+        if (response.contacts() != null) {
+            org.setContacts(response.contacts().stream()
+                .map(this::mapContact)
+                .collect(Collectors.toList()));
+        }
+
         return org;
+    }
+
+    private Contact mapContact(ExternalContactResponse dto) {
+        return Contact.builder()
+                .id(dto.id())
+                .contactableId(dto.contactableId())
+                .contactableType(dto.contactableType())
+                .firstName(dto.firstName())
+                .lastName(dto.lastName())
+                .title(dto.title())
+                .email(dto.email())
+                .phoneNumber(dto.phoneNumber())
+                .secondaryPhoneNumber(dto.secondaryPhoneNumber())
+                .isFavorite(dto.isFavorite())
+                .build();
     }
 }

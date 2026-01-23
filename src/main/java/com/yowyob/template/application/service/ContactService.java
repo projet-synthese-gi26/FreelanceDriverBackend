@@ -2,6 +2,7 @@ package com.yowyob.template.application.service;
 
 import com.yowyob.template.domain.model.Contact;
 import com.yowyob.template.domain.ports.in.CreateContactUseCase;
+import com.yowyob.template.domain.ports.in.GetContactsUseCase;
 import com.yowyob.template.domain.ports.out.ContactRepositoryPort;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -13,7 +14,7 @@ import java.util.UUID;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class ContactService implements CreateContactUseCase {
+public class ContactService implements CreateContactUseCase, GetContactsUseCase {
     private final ContactRepositoryPort repository;
 
     @Override
@@ -86,7 +87,23 @@ public class ContactService implements CreateContactUseCase {
     }
 
     @Override
+    public Flux<Contact> getContacts(UUID contactableId) {
+        return repository.findAllByContactableId(contactableId);
+    }
+
+    @Override
+    public Flux<Contact> getContacts(UUID contactableId, String jwtToken) {
+        String token = jwtToken != null && jwtToken.startsWith("Bearer ") ? jwtToken.substring(7) : jwtToken;
+        return repository.findAllByContactableId(contactableId, token);
+    }
+    
+    @Override
     public Mono<Void> deleteContact(UUID id) {
         return repository.deleteById(id);
+    }
+    
+    public Mono<Void> deleteContact(UUID id, String jwtToken) {
+        String token = jwtToken != null && jwtToken.startsWith("Bearer ") ? jwtToken.substring(7) : jwtToken;
+        return repository.deleteById(id, token);
     }
 }

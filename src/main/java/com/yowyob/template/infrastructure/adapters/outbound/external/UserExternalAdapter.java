@@ -27,9 +27,20 @@ public class UserExternalAdapter implements UserRepositoryPort {
 
     @Override
     public Mono<User> findById(UUID id) {
-        return webClientBuilder.baseUrl(authServiceUrl).build()
+        return findById(id, null);
+    }
+
+    @Override
+    public Mono<User> findById(UUID id, String jwtToken) {
+        var requestSpec = webClientBuilder.baseUrl(authServiceUrl).build()
                 .get()
-                .uri("/api/users/{id}", id)
+                .uri("/api/users/{id}", id);
+
+        if (jwtToken != null && !jwtToken.isEmpty()) {
+            requestSpec.header("Authorization", "Bearer " + jwtToken);
+        }
+
+        return requestSpec
                 .retrieve()
                 .bodyToMono(TraMaSysUserResponse.class)
                 .map(this::mapToDomain);

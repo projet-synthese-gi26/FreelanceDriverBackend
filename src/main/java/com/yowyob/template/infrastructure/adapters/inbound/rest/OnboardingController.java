@@ -27,13 +27,19 @@ public class OnboardingController {
 
     @PostMapping("/become-driver")
     @Operation(summary = "Devenir Chauffeur", description = "Permet à un utilisateur existant de créer un profil Chauffeur et une organisation associée.")
-    public Mono<UserProfileResponse> becomeDriver(@RequestParam UUID userId, @RequestBody NewRoleRequest request) {
-        return onboardingService.becomeDriver(userId, request);
+    public Mono<UserProfileResponse> becomeDriver(@RequestParam UUID userId, 
+                                                  @RequestBody NewRoleRequest request, 
+                                                  @RequestHeader("Authorization") String authHeader) {
+        String token = authHeader.startsWith("Bearer ") ? authHeader.substring(7) : authHeader;
+        return onboardingService.becomeDriver(userId, request, token);
     }
 
     @PostMapping("/become-client")
     @Operation(summary = "Devenir Client", description = "Permet à un utilisateur existant de créer un profil Client et une organisation associée.")
-    public Mono<UserProfileResponse> becomeClient(@RequestParam UUID userId, @RequestBody NewRoleRequest request) {
-        return onboardingService.becomeClient(userId, request);
+    public Mono<UserProfileResponse> becomeClient(@RequestParam UUID userId, 
+                                                  @RequestBody NewRoleRequest request, 
+                                                  @RequestHeader("Authorization") String authHeader) {
+        String token = authHeader.startsWith("Bearer ") ? authHeader.substring(7) : authHeader;
+        return onboardingService.becomeClient(userId, request, token);
     }
 }

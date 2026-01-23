@@ -9,8 +9,11 @@ import reactor.core.publisher.Mono;
 
 public interface BusinessActorRepositoryPort {
 
-    Mono<BusinessActor>  save(BusinessActor businessActor);
+    Mono<BusinessActor> save(BusinessActor businessActor);
+    Mono<BusinessActor> save(BusinessActor businessActor, String jwtToken);
     Mono<BusinessActor> findById(UUID id);
+    Mono<BusinessActor> findByUserId(UUID userId);
+    Mono<BusinessActor> findByUserId(UUID userId, String jwtToken);
     Flux<BusinessActor> findAll();
     Mono<Void> deleteById(UUID id);
     Mono<Void> deleteAll();

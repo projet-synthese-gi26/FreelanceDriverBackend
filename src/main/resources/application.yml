@@ -49,6 +49,14 @@ spring:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
 
+  # SECURITY
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${JWK_SET_URI:https://auth-service.pynfi.com/.well-known/jwks.json}
+          jws-algorithms: RS256
+
 # CUSTOM CONFIG 
 application:
   external:

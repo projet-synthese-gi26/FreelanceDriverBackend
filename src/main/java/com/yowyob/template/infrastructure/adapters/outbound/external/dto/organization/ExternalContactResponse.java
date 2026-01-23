@@ -13,6 +13,8 @@ public record ExternalContactResponse(
     String email,
     String phoneNumber,
     String secondaryPhoneNumber,
+    String faxNumber,
+    String secondaryEmail,
     Boolean isFavorite,
     Boolean isEmailVerified,
     Boolean isPhoneNumberVerified,

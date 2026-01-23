@@ -87,4 +87,9 @@ public class AddressService implements createAddressUseCase {
     public Mono<Void> deleteAddress(UUID id) {
         return repository.deleteById(id);
     }
+
+    public Mono<Void> deleteAddress(UUID id, String jwtToken) {
+        String token = jwtToken != null && jwtToken.startsWith("Bearer ") ? jwtToken.substring(7) : jwtToken;
+        return repository.deleteById(id, token);
+    }
 }
