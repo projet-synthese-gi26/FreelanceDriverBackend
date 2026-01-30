@@ -5,7 +5,7 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "8081:8081"  # Exposition du port pour l'application backend
+      - "8082:8081"  # Exposition du port pour l'application backend
     environment:
       SPRING_PROFILES_ACTIVE: prod
       # Configuration spécifique à la production. Remplacez les valeurs par vos configurations
