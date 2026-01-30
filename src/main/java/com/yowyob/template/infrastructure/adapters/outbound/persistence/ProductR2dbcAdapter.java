@@ -33,9 +33,21 @@ public class ProductR2dbcAdapter implements ProductRepositoryPort {
     }
 
     @Override
+    public Mono<Product> findByIdAndProductType(UUID id, String productType) {
+        return repository.findByIdAndProductType(id, productType)
+                .map(mapper::toDomain);
+    }
+
+    @Override
     public Flux<Product> findAll(){
         return repository.findAll().
                map(mapper::toDomain);
+    }
+
+    @Override
+    public Flux<Product> findByProductTypeAndClientId(String productType, UUID clientId) {
+        return repository.findByProductTypeAndClientId(productType, clientId)
+                .map(mapper::toDomain);
     }
 
     @Override

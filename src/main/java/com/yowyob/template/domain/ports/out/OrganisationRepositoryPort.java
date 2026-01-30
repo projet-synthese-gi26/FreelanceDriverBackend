@@ -10,6 +10,7 @@ public interface OrganisationRepositoryPort {
     Mono<Organisation> save(Organisation organisation);
     Mono<Organisation> save(Organisation organisation, String jwtToken);
     Mono<Organisation> findById(UUID id);
+    Mono<Organisation> findById(UUID id, String jwtToken);
     Mono<Organisation> findByActorId(UUID actorId);
     Mono<Organisation> findByActorId(UUID actorId, String jwtToken);
     Flux<Organisation> findAll();

@@ -14,6 +14,7 @@ import lombok.experimental.SuperBuilder;
 public class DriverRole extends BusinessActor {
     private String licenseNumber;
     private Integer yearsExperience;
+    private String driverType;
 
     @Override
     public String getRoleType() {

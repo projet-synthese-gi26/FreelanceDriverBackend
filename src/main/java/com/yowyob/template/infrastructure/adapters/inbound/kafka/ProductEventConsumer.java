@@ -15,7 +15,14 @@ public class ProductEventConsumer {
 
     @KafkaListener(topics = "${application.kafka.topics.product-events}", groupId = "template-group")
     public void consume(Product product) {
-        log.info("CONSUMER: I received an event for product with name : {} and standardPrice : {}", 
-             product.getName(), product.getStandardPrice());
+        // Utilise getTitle() pour le nom, et tente d'afficher le prix selon le type de produit
+        String price = null;
+        if (product instanceof com.yowyob.template.domain.model.Annonce annonce) {
+            price = annonce.getCost();
+        } else if (product instanceof com.yowyob.template.domain.model.Planning planning) {
+            price = planning.getRegularAmount();
+        }
+        log.info("CONSUMER: I received an event for product with title : {} and price : {}", 
+             product.getTitle(), price);
     }
 }

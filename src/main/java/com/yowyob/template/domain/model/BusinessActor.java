@@ -7,6 +7,7 @@ import lombok.Setter;
 import lombok.experimental.SuperBuilder;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -22,6 +23,7 @@ public abstract class BusinessActor implements Reviewable, Reactable {
     private String phoneNumber;
     private String emailAddress;
     private String avatarUrl;
+    private List<String> languages;
 
     public abstract String getRoleType();
 

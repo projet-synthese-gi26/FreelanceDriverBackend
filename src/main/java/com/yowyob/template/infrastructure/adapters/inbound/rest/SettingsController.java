@@ -13,6 +13,10 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import java.util.UUID;
@@ -32,8 +36,13 @@ public class SettingsController {
         @ApiResponse(responseCode = "201", description = "Paramètres créés avec succès"),
         @ApiResponse(responseCode = "400", description = "Données invalides")
     })
-    public Mono<SettingsResponse> create(@RequestBody @Valid SettingsRequest request) {
+    public Mono<SettingsResponse> create(@RequestHeader(name = "Authorization", required = false) String authHeader,
+                                         @RequestBody @Valid SettingsRequest request) {
         Settings settings = mapper.toDomain(request);
+        String sub = extractSubFromAuthHeader(authHeader);
+        if (sub != null) {
+            settings.setUserId(sub);
+        }
         return useCase.createSettings(settings)
                 .map(mapper::toResponse);
     }
@@ -63,10 +72,32 @@ public class SettingsController {
         @ApiResponse(responseCode = "200", description = "Paramètres mis à jour"),
         @ApiResponse(responseCode = "404", description = "Paramètres non trouvés")
     })
-    public Mono<SettingsResponse> update(@PathVariable UUID id, @RequestBody @Valid SettingsRequest request) {
+    public Mono<SettingsResponse> update(@RequestHeader(name = "Authorization", required = false) String authHeader,
+                                         @PathVariable UUID id, @RequestBody @Valid SettingsRequest request) {
         Settings settings = mapper.toDomain(request);
+        String sub = extractSubFromAuthHeader(authHeader);
+        if (sub != null) {
+            settings.setUserId(sub);
+        }
         return useCase.updateSettings(id, settings)
                 .map(mapper::toResponse);
+    }
+
+    private String extractSubFromAuthHeader(String authHeader) {
+        if (authHeader == null) return null;
+        String token = authHeader.startsWith("Bearer ") ? authHeader.substring(7) : authHeader;
+        String[] parts = token.split("\\.");
+        if (parts.length < 2) return null;
+        try {
+            byte[] decoded = Base64.getUrlDecoder().decode(parts[1]);
+            String payload = new String(decoded, StandardCharsets.UTF_8);
+            ObjectMapper mapperObj = new ObjectMapper();
+            JsonNode node = mapperObj.readTree(payload);
+            if (node.has("sub")) return node.get("sub").asText();
+        } catch (Exception e) {
+            // ignore and return null
+        }
+        return null;
     }
 
     @DeleteMapping("/{id}")

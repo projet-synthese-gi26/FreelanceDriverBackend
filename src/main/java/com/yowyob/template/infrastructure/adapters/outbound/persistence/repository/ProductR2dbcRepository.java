@@ -3,8 +3,13 @@ package com.yowyob.template.infrastructure.adapters.outbound.persistence.reposit
 import com.yowyob.template.infrastructure.adapters.outbound.persistence.entity.ProductEntity;
 import org.springframework.data.repository.reactive.ReactiveCrudRepository;
 import org.springframework.stereotype.Repository;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.util.UUID;
 
 @Repository
-public interface ProductR2dbcRepository extends ReactiveCrudRepository<ProductEntity, UUID> {}
+public interface ProductR2dbcRepository extends ReactiveCrudRepository<ProductEntity, UUID> {
+    Mono<ProductEntity> findByIdAndProductType(UUID id, String productType);
+    Flux<ProductEntity> findByProductTypeAndClientId(String productType, UUID clientId);
+}

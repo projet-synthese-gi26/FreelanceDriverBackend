@@ -7,8 +7,11 @@ import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.UserProfileR
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.core.OAuth2AuthenticatedPrincipal;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
+import io.swagger.v3.oas.annotations.Parameter;
 
 import java.util.UUID;
 
@@ -27,18 +30,24 @@ public class OnboardingController {
 
     @PostMapping("/become-driver")
     @Operation(summary = "Devenir Chauffeur", description = "Permet à un utilisateur existant de créer un profil Chauffeur et une organisation associée.")
-    public Mono<UserProfileResponse> becomeDriver(@RequestParam UUID userId, 
-                                                  @RequestBody NewRoleRequest request, 
-                                                  @RequestHeader("Authorization") String authHeader) {
+    public Mono<UserProfileResponse> becomeDriver(
+            @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+            @Parameter(hidden = true) @RequestHeader(name = "Authorization") String authHeader,
+            @RequestBody NewRoleRequest request
+    ) {
+        UUID userId = UUID.fromString(principal.getAttribute("sub"));
         String token = authHeader.startsWith("Bearer ") ? authHeader.substring(7) : authHeader;
         return onboardingService.becomeDriver(userId, request, token);
     }
 
     @PostMapping("/become-client")
     @Operation(summary = "Devenir Client", description = "Permet à un utilisateur existant de créer un profil Client et une organisation associée.")
-    public Mono<UserProfileResponse> becomeClient(@RequestParam UUID userId, 
-                                                  @RequestBody NewRoleRequest request, 
-                                                  @RequestHeader("Authorization") String authHeader) {
+    public Mono<UserProfileResponse> becomeClient(
+            @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+            @Parameter(hidden = true) @RequestHeader(name = "Authorization") String authHeader,
+            @RequestBody NewRoleRequest request
+    ) {
+        UUID userId = UUID.fromString(principal.getAttribute("sub"));
         String token = authHeader.startsWith("Bearer ") ? authHeader.substring(7) : authHeader;
         return onboardingService.becomeClient(userId, request, token);
     }

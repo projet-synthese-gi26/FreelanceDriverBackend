@@ -5,8 +5,6 @@ import jakarta.validation.constraints.NotNull;
 import java.util.UUID;
 
 public record SettingsRequest(
-
-        @NotBlank String userId,
         String theme,
         String language,
         Boolean longRideEnabled,

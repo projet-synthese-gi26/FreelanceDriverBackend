@@ -1,0 +1,181 @@
+package com.yowyob.template.application.service;
+
+import com.yowyob.template.domain.model.DriverRole;
+import com.yowyob.template.domain.model.Planning;
+import com.yowyob.template.domain.model.Product;
+import com.yowyob.template.domain.model.ProductStatus;
+import com.yowyob.template.domain.ports.out.BusinessActorRepositoryPort;
+import com.yowyob.template.domain.ports.out.OrganisationRepositoryPort;
+import com.yowyob.template.domain.ports.out.ProductRepositoryPort;
+import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.request.CreatePlanningRequest;
+import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.request.UpdatePlanningRequest;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+
+import java.sql.Timestamp;
+import java.time.Instant;
+import java.util.UUID;
+
+@Service
+@RequiredArgsConstructor
+public class DriverPlanningService {
+
+    private final BusinessActorRepositoryPort actorRepository;
+    private final OrganisationRepositoryPort organisationRepository;
+    private final ProductRepositoryPort productRepository;
+
+    private static final String PLANNING_TYPE = "PLANNING";
+
+    public Mono<Product> createDriverPlanning(UUID authUserId, CreatePlanningRequest request, String token) {
+        
+        // 1. Trouver le BusinessActor associé à l'utilisateur connecté
+        return actorRepository.findByUserId(authUserId, token)
+            .switchIfEmpty(Mono.error(new AccessDeniedException("No Business Actor found for this user")))
+            .flatMap(actor -> {
+                
+                // 2. Vérifier que c'est bien un Driver
+                if (!(actor instanceof DriverRole)) {
+                    return Mono.error(new AccessDeniedException("User is not a Driver"));
+                }
+
+                // 3. Trouver son Organisation
+                return organisationRepository.findByActorId(actor.getId(), token)
+                    .switchIfEmpty(Mono.error(new RuntimeException("Driver has no Organisation")))
+                    .flatMap(organisation -> {
+                        
+                        // 4. Utiliser la Factory Method pour créer le Planning
+                        // Ici, on utilise un Builder pour construire l'objet à partir de la requête
+                        Planning planning = Planning.builder()
+                            .orgId(organisation.getId())
+                            .clientId(authUserId)
+                            .clientName(actor.getDisplayName())
+                            .clientPhoneNumber(actor.getPhoneNumber())
+                            .profileImageUrl(actor.getAvatarUrl())
+                            .title(request.title())
+                            .departureLocation(request.departureLocation())
+                            .dropoffLocation(request.dropoffLocation())
+                            .startDate(request.startDate())
+                            .startTime(request.startTime())
+                            .endDate(request.endDate())
+                            .endTime(request.endTime())
+                            .status(ProductStatus.Draft)
+                            .tripType(request.tripType())
+                            .meetupPoint(request.meetupPoint())
+                            .tripIntention(request.tripIntention())
+                            .pricingMethod(request.pricingMethod())
+                            .isNegotiable(request.isNegotiable() != null && request.isNegotiable())
+                            .paymentOption(request.paymentOption())
+                            .regularAmount(request.regularAmount())
+                            .discountPercentage(request.discountPercentage())
+                            .discountedAmount(request.discountedAmount())
+                            .createdAt(Timestamp.from(Instant.now()))
+                            .build();
+
+                        // 5. Sauvegarder via le ProductRepositoryPort
+                        return productRepository.save(planning);
+                    });
+            });
+    }
+
+    public Flux<Product> listDriverPlannings(UUID authUserId, String token) {
+        return assertDriver(authUserId, token)
+                .thenMany(productRepository.findByProductTypeAndClientId(PLANNING_TYPE, authUserId));
+    }
+
+    public Mono<Product> getDriverPlanning(UUID authUserId, UUID planningId, String token) {
+        return assertDriver(authUserId, token)
+                .then(productRepository.findByIdAndProductType(planningId, PLANNING_TYPE))
+                .switchIfEmpty(Mono.error(new AccessDeniedException("Planning not found")))
+                .flatMap(product -> {
+                    if (product.getClientId() == null || !product.getClientId().equals(authUserId)) {
+                        return Mono.error(new AccessDeniedException("Access denied"));
+                    }
+                    return Mono.just(product);
+                });
+    }
+
+    public Mono<Product> updateDriverPlanning(UUID authUserId, UUID planningId, UpdatePlanningRequest request, String token) {
+        return assertDriver(authUserId, token)
+                .then(productRepository.findByIdAndProductType(planningId, PLANNING_TYPE))
+                .switchIfEmpty(Mono.error(new AccessDeniedException("Planning not found")))
+                .flatMap(existing -> {
+                    if (existing.getClientId() == null || !existing.getClientId().equals(authUserId)) {
+                        return Mono.error(new AccessDeniedException("Access denied"));
+                    }
+                    if (!(existing instanceof Planning planning)) {
+                        return Mono.error(new IllegalStateException("Product is not a Planning"));
+                    }
+
+                    if (request.title() != null) planning.setTitle(request.title());
+                    if (request.departureLocation() != null) planning.setDepartureLocation(request.departureLocation());
+                    if (request.dropoffLocation() != null) planning.setDropoffLocation(request.dropoffLocation());
+                    if (request.startDate() != null) planning.setStartDate(request.startDate());
+                    if (request.startTime() != null) planning.setStartTime(request.startTime());
+                    if (request.endDate() != null) planning.setEndDate(request.endDate());
+                    if (request.endTime() != null) planning.setEndTime(request.endTime());
+                    if (request.status() != null) {
+                        try {
+                            planning.setStatus(ProductStatus.valueOf(request.status()));
+                        } catch (IllegalArgumentException ex) {
+                            return Mono.error(new IllegalArgumentException("Invalid status: " + request.status()));
+                        }
+                    }
+
+                    Mono<Void> reservedByCheck = Mono.empty();
+                    if (request.reservedById() != null) {
+                        reservedByCheck = organisationRepository.findById(request.reservedById(), token)
+                                .switchIfEmpty(Mono.error(new IllegalArgumentException(
+                                        "Unknown organisation id: " + request.reservedById())))
+                                .then();
+                    }
+
+                    return reservedByCheck.then(Mono.defer(() -> {
+                        if (request.reservedById() != null) {
+                            planning.setReservedById(request.reservedById());
+                            if (planning.getStatus() == ProductStatus.Published
+                                    || planning.getStatus() == ProductStatus.Draft) {
+                                planning.setStatus(ProductStatus.PendingConfirmation);
+                            }
+                        }
+                        if (request.tripType() != null) planning.setTripType(request.tripType());
+                        if (request.meetupPoint() != null) planning.setMeetupPoint(request.meetupPoint());
+                        if (request.tripIntention() != null) planning.setTripIntention(request.tripIntention());
+                        if (request.pricingMethod() != null) planning.setPricingMethod(request.pricingMethod());
+                        if (request.isNegotiable() != null) planning.setNegotiable(request.isNegotiable());
+                        if (request.paymentOption() != null) planning.setPaymentOption(request.paymentOption());
+                        if (request.regularAmount() != null) planning.setRegularAmount(request.regularAmount());
+                        if (request.discountPercentage() != null) planning.setDiscountPercentage(request.discountPercentage());
+                        if (request.discountedAmount() != null) planning.setDiscountedAmount(request.discountedAmount());
+                        planning.setUpdatedAt(Timestamp.from(Instant.now()));
+
+                        return productRepository.save(planning);
+                    }));
+                });
+    }
+
+    public Mono<Void> deleteDriverPlanning(UUID authUserId, UUID planningId, String token) {
+        return assertDriver(authUserId, token)
+                .then(productRepository.findByIdAndProductType(planningId, PLANNING_TYPE))
+                .switchIfEmpty(Mono.error(new AccessDeniedException("Planning not found")))
+                .flatMap(existing -> {
+                    if (existing.getClientId() == null || !existing.getClientId().equals(authUserId)) {
+                        return Mono.error(new AccessDeniedException("Access denied"));
+                    }
+                    return productRepository.deleteById(planningId);
+                });
+    }
+
+    private Mono<Void> assertDriver(UUID authUserId, String token) {
+        return actorRepository.findByUserId(authUserId, token)
+                .switchIfEmpty(Mono.error(new AccessDeniedException("No Business Actor found for this user")))
+                .flatMap(actor -> {
+                    if (!(actor instanceof DriverRole)) {
+                        return Mono.error(new AccessDeniedException("User is not a Driver"));
+                    }
+                    return Mono.empty();
+                });
+    }
+}

@@ -28,6 +28,20 @@ public class OrganisationExternalAdapter implements OrganisationRepositoryPort {
         return webClientBuilder.baseUrl(orgServiceUrl).build();
     }
 
+     private String toAuthorizationHeaderValue(String jwtToken) {
+         if (jwtToken == null) {
+             return null;
+         }
+         String token = jwtToken.trim();
+         if (token.isEmpty()) {
+             return null;
+         }
+         if (token.regionMatches(true, 0, "Bearer ", 0, "Bearer ".length())) {
+             return token;
+         }
+         return "Bearer " + token;
+     }
+
     @Override
     public Mono<Organisation> save(Organisation organisation) {
         return save(organisation, null);
@@ -39,8 +53,9 @@ public class OrganisationExternalAdapter implements OrganisationRepositoryPort {
         var requestSpec = getClient().post()
                 .uri("/api/v1/organizations");
 
-        if (jwtToken != null && !jwtToken.isEmpty()) {
-            requestSpec.header("Authorization", "Bearer " + jwtToken);
+        String authHeader = toAuthorizationHeaderValue(jwtToken);
+        if (authHeader != null) {
+            requestSpec.header("Authorization", authHeader);
         }
 
         return requestSpec
@@ -52,8 +67,20 @@ public class OrganisationExternalAdapter implements OrganisationRepositoryPort {
 
     @Override
     public Mono<Organisation> findById(UUID id) {
-        Mono<ExternalOrganizationResponse> orgMono = getClient().get()
-                .uri("/api/v1/organizations/{id}", id)
+        return findById(id, null);
+    }
+
+    @Override
+    public Mono<Organisation> findById(UUID id, String jwtToken) {
+        var requestSpec = getClient().get()
+                .uri("/api/v1/organizations/{id}", id);
+
+        String authHeader = toAuthorizationHeaderValue(jwtToken);
+        if (authHeader != null) {
+            requestSpec.header("Authorization", authHeader);
+        }
+
+        Mono<ExternalOrganizationResponse> orgMono = requestSpec
                 .retrieve()
                 .bodyToMono(ExternalOrganizationResponse.class);
         return enrichOrganisation(orgMono);
@@ -71,8 +98,9 @@ public class OrganisationExternalAdapter implements OrganisationRepositoryPort {
                         .queryParam("actorId", actorId)
                         .build());
                         
-        if (jwtToken != null && !jwtToken.isEmpty()) {
-            requestSpec.header("Authorization", "Bearer " + jwtToken);
+        String authHeader = toAuthorizationHeaderValue(jwtToken);
+        if (authHeader != null) {
+            requestSpec.header("Authorization", authHeader);
         }
 
         return requestSpec

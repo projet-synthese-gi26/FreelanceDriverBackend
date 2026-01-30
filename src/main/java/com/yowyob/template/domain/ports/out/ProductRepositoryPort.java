@@ -9,7 +9,9 @@ import reactor.core.publisher.Mono;
 public interface ProductRepositoryPort {
     Mono<Product> save(Product product);
     Mono<Product> findById(UUID id);
+    Mono<Product> findByIdAndProductType(UUID id, String productType);
     Flux<Product> findAll();
+    Flux<Product> findByProductTypeAndClientId(String productType, UUID clientId);
     Mono<Void> deleteById(UUID id);
     Mono<Void> deleteAll();
 }

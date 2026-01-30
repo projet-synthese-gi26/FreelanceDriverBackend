@@ -8,12 +8,13 @@ import lombok.experimental.SuperBuilder;
 
 import java.time.OffsetDateTime;
 
-@Getter
-@Setter
-@SuperBuilder
-@NoArgsConstructor
+@Getter 
+@Setter 
+@SuperBuilder 
+@NoArgsConstructor 
 @AllArgsConstructor
 public class Annonce extends Product {
-    private OffsetDateTime requiredDate;
-    private String category;
+    // Les champs comme departureLocation sont maintenant dans la classe Product (en String)
+    private String cost;
+    private String baggageInfo;
 }

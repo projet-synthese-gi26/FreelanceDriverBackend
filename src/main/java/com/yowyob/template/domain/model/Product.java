@@ -23,68 +23,62 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 public abstract class Product implements Reviewable, Reactable, IAsset {
+    
     private UUID id;
     private UUID orgId;
+
+    // Données dénormalisées de l'auteur
+    private UUID clientId;
+    private String clientName;
+    private String clientPhoneNumber;
+    private String profileImageUrl;
+
+    // Champs communs
     private String title;
-    private String description;
+    private String departureLocation;
+    private String dropoffLocation;
+    private OffsetDateTime startDate;
+    private LocalTime startTime;
+    private OffsetDateTime endDate;
+    private LocalTime endTime;
+    private UUID reservedById;
+    private boolean isNegotiable;
+    private String paymentMethod;
     private ProductStatus status;
-    private BigDecimal price;
     private Timestamp createdAt;
     private Timestamp updatedAt;
-    
-    // Additional fields from schema.sql
-    private String name;
-    private Boolean isActive;
-    private String standardPrice;
-    private List<String> productUrls;
-    private String regularAmount;
-    private BigDecimal discountPercentage;
-    private BigDecimal discountedAmount;
+
+    // Nouveaux champs du formulaire
+    private TripType tripType;
+    private String meetupPoint;
+    private String tripIntention;
+    private String pricingMethod;
     
     @Builder.Default
     private List<String> metadata = new ArrayList<>();
 
-    public void publish() {
-        this.status = ProductStatus.PUBLISHED;
-    }
+    // Méthodes des interfaces
+    @Override
+    public UUID getAssetId() { return id; }
 
     @Override
-    public UUID getAssetId() {
-        return id;
-    }
+    public UUID getOwnerId() { return orgId; }
 
     @Override
-    public UUID getOwnerId() {
-        return orgId;
-    }
+    public UUID getReviewableId() { return id; }
 
     @Override
-    public UUID getReviewableId() {
-        return id;
-    }
+    public SubjectType getReviewableType() { return SubjectType.PRODUCT; }
 
     @Override
-    public SubjectType getReviewableType() {
-        return SubjectType.PRODUCT;
-    }
+    public Double getAverageRating() { return 0.0; } // Logique à implémenter
 
     @Override
-    public Double getAverageRating() {
-        return 0.0;
-    }
+    public UUID getReactableId() { return id; }
 
     @Override
-    public UUID getReactableId() {
-        return id;
-    }
+    public SubjectType getReactableType() { return SubjectType.PRODUCT; }
 
     @Override
-    public SubjectType getReactableType() {
-        return SubjectType.PRODUCT;
-    }
-
-    @Override
-    public Map<ReactionType, Long> getReactionCounts() {
-        return new HashMap<>();
-    }
+    public Map<ReactionType, Long> getReactionCounts() { return new HashMap<>(); } // Logique à implémenter
 }

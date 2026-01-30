@@ -29,6 +29,20 @@ public class BusinessActorExternalAdapter implements BusinessActorRepositoryPort
         return webClientBuilder.baseUrl(orgServiceUrl).build();
     }
 
+     private String toAuthorizationHeaderValue(String jwtToken) {
+         if (jwtToken == null) {
+             return null;
+         }
+         String token = jwtToken.trim();
+         if (token.isEmpty()) {
+             return null;
+         }
+         if (token.regionMatches(true, 0, "Bearer ", 0, "Bearer ".length())) {
+             return token;
+         }
+         return "Bearer " + token;
+     }
+
     @Override
     public Mono<BusinessActor> save(BusinessActor businessActor) {
         return save(businessActor, null);
@@ -40,8 +54,9 @@ public class BusinessActorExternalAdapter implements BusinessActorRepositoryPort
         var requestSpec = getClient().post()
                 .uri("/api/v1/business-actors");
         
-        if (jwtToken != null && !jwtToken.isEmpty()) {
-            requestSpec.header("Authorization", "Bearer " + jwtToken);
+        String authHeader = toAuthorizationHeaderValue(jwtToken);
+        if (authHeader != null) {
+            requestSpec.header("Authorization", authHeader);
         }
 
         return requestSpec
@@ -68,18 +83,18 @@ public class BusinessActorExternalAdapter implements BusinessActorRepositoryPort
     @Override
     public Mono<BusinessActor> findByUserId(UUID userId, String jwtToken) {
         var requestSpec = getClient().get()
-                .uri(uriBuilder -> uriBuilder.path("/api/v1/business-actors")
-                        .queryParam("authUserId", userId)
-                        .build());
-                        
-        if (jwtToken != null && !jwtToken.isEmpty()) {
-            requestSpec.header("Authorization", "Bearer " + jwtToken);
+                .uri("/api/v1/business-actors");
+
+        String authHeader = toAuthorizationHeaderValue(jwtToken);
+        if (authHeader != null) {
+            requestSpec.header("Authorization", authHeader);
         }
 
         return requestSpec
                 .retrieve()
                 .bodyToFlux(ExternalBusinessActorResponse.class)
-                .next() // Get first match
+                .filter(actor -> userId != null && userId.equals(actor.authUserId()))
+                .next()
                 .map(this::mapToDomain);
     }
 

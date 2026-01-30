@@ -25,6 +25,20 @@ public class UserExternalAdapter implements UserRepositoryPort {
     @Value("${application.external.auth-service-url}")
     private String authServiceUrl;
 
+     private String toAuthorizationHeaderValue(String jwtToken) {
+         if (jwtToken == null) {
+             return null;
+         }
+         String token = jwtToken.trim();
+         if (token.isEmpty()) {
+             return null;
+         }
+         if (token.regionMatches(true, 0, "Bearer ", 0, "Bearer ".length())) {
+             return token;
+         }
+         return "Bearer " + token;
+     }
+
     @Override
     public Mono<User> findById(UUID id) {
         return findById(id, null);
@@ -36,8 +50,9 @@ public class UserExternalAdapter implements UserRepositoryPort {
                 .get()
                 .uri("/api/users/{id}", id);
 
-        if (jwtToken != null && !jwtToken.isEmpty()) {
-            requestSpec.header("Authorization", "Bearer " + jwtToken);
+        String authHeader = toAuthorizationHeaderValue(jwtToken);
+        if (authHeader != null) {
+            requestSpec.header("Authorization", authHeader);
         }
 
         return requestSpec

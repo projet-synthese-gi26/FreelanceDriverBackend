@@ -1,5 +1,5 @@
 Project Context From: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre
-Generated On: ven. 23 janv. 2026 14:43:37 WAT
+Generated On: ven. 30 janv. 2026 12:59:51 WAT
 ===============================================
 Ignored Directory Patterns: .* node_modules vendor build dist target __pycache__ .next cache target storage
 Ignored File Patterns: *.log *.jar *.pdf *.class *.sqlite project_context.txt package-lock.json yarn.lock composer.lock *.ico pnpm-lock.yaml
@@ -1460,6 +1460,7 @@ Write-Output "MVN_CMD=$MAVEN_HOME/bin/$MVN_CMD"
         <java.version>21</java.version>
         <spring-cloud.version>2023.0.0</spring-cloud.version>
         <mapstruct.version>1.5.5.Final</mapstruct.version>
+        <r2dbc-postgresql.version>1.0.5.RELEASE</r2dbc-postgresql.version>
     </properties>
     
     <dependencies>
@@ -1497,7 +1498,7 @@ Write-Output "MVN_CMD=$MAVEN_HOME/bin/$MVN_CMD"
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>r2dbc-postgresql</artifactId>
-            <scope>runtime</scope>
+            <version>${r2dbc-postgresql.version}</version>
         </dependency>
         <dependency>
             <groupId>org.postgresql</groupId>
@@ -1866,6 +1867,11 @@ public class AddressService implements createAddressUseCase {
     public Mono<Void> deleteAddress(UUID id) {
         return repository.deleteById(id);
     }
+
+    public Mono<Void> deleteAddress(UUID id, String jwtToken) {
+        String token = jwtToken != null && jwtToken.startsWith("Bearer ") ? jwtToken.substring(7) : jwtToken;
+        return repository.deleteById(id, token);
+    }
 }
 // END OF FILE: src/main/java/com/yowyob/template/application/service/AddressService.java
 
@@ -1995,6 +2001,291 @@ public class BusinessActorService implements createBusinessActorUseCase {
 }
 // END OF FILE: src/main/java/com/yowyob/template/application/service/BusinessActorService.java
 
+//---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/application/service/ClientAnnonceService.java
+
+package com.yowyob.template.application.service;
+
+import com.yowyob.template.domain.model.Annonce;
+import com.yowyob.template.domain.model.ClientRole;
+import com.yowyob.template.domain.model.Product;
+import com.yowyob.template.domain.model.ProductStatus;
+import com.yowyob.template.domain.ports.out.BusinessActorRepositoryPort;
+import com.yowyob.template.domain.ports.out.OrganisationRepositoryPort;
+import com.yowyob.template.domain.ports.out.ProductRepositoryPort;
+import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.request.CreateAnnonceRequest;
+import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.request.UpdateAnnonceRequest;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+
+import java.sql.Timestamp;
+import java.time.Instant;
+import java.util.UUID;
+
+@Service
+@RequiredArgsConstructor
+public class ClientAnnonceService {
+
+    private final BusinessActorRepositoryPort actorRepository;
+    private final OrganisationRepositoryPort organisationRepository;
+    private final ProductRepositoryPort productRepository;
+
+    private static final String ANNONCE_TYPE = "ANNONCE";
+    
+    public Mono<Product> createClientAnnonce(UUID authUserId, CreateAnnonceRequest request, String token) {
+        
+        return actorRepository.findByUserId(authUserId, token)
+            .switchIfEmpty(Mono.error(new AccessDeniedException("No Business Actor found for this user")))
+            .flatMap(actor -> {
+                
+                if (!(actor instanceof ClientRole)) {
+                    return Mono.error(new AccessDeniedException("User is not a Client"));
+                }
+                
+                return organisationRepository.findByActorId(actor.getId(), token)
+                    .switchIfEmpty(Mono.error(new RuntimeException("Client has no Organisation")))
+                    .flatMap(organisation -> {
+                        
+                        Annonce annonce = Annonce.builder()
+                            .orgId(organisation.getId())
+                            .clientId(authUserId)
+                            .clientName(actor.getDisplayName())
+                            .clientPhoneNumber(actor.getPhoneNumber())
+                            .profileImageUrl(actor.getAvatarUrl())
+                            .title(request.title())
+                            .departureLocation(request.departureLocation())
+                            .dropoffLocation(request.dropoffLocation())
+                            .startDate(request.startDate())
+                            .startTime(request.startTime())
+                            .endDate(request.endDate())
+                            .endTime(request.endTime())
+                            .cost(request.cost())
+                            .baggageInfo(request.baggageInfo())
+                            .status(ProductStatus.Draft)
+                            .tripType(request.tripType())
+                            .meetupPoint(request.meetupPoint())
+                            .tripIntention(request.tripIntention())
+                            .pricingMethod(request.pricingMethod())
+                            .isNegotiable(request.isNegotiable() != null && request.isNegotiable())
+                            .paymentMethod(request.paymentMethod())
+                            .createdAt(Timestamp.from(Instant.now()))
+                            .build();
+
+                        return productRepository.save(annonce);
+                    });
+            });
+    }
+
+    public Flux<Product> listClientAnnonces(UUID authUserId, String token) {
+        return assertClient(authUserId, token)
+                .thenMany(productRepository.findByProductTypeAndClientId(ANNONCE_TYPE, authUserId));
+    }
+
+    public Mono<Product> getClientAnnonce(UUID authUserId, UUID annonceId, String token) {
+        return assertClient(authUserId, token)
+                .then(productRepository.findByIdAndProductType(annonceId, ANNONCE_TYPE))
+                .switchIfEmpty(Mono.error(new AccessDeniedException("Annonce not found")))
+                .flatMap(product -> {
+                    if (product.getClientId() == null || !product.getClientId().equals(authUserId)) {
+                        return Mono.error(new AccessDeniedException("Access denied"));
+                    }
+                    return Mono.just(product);
+                });
+    }
+
+    public Mono<Product> updateClientAnnonce(UUID authUserId, UUID annonceId, UpdateAnnonceRequest request, String token) {
+        return assertClient(authUserId, token)
+                .then(productRepository.findByIdAndProductType(annonceId, ANNONCE_TYPE))
+                .switchIfEmpty(Mono.error(new AccessDeniedException("Annonce not found")))
+                .flatMap(existing -> {
+                    if (existing.getClientId() == null || !existing.getClientId().equals(authUserId)) {
+                        return Mono.error(new AccessDeniedException("Access denied"));
+                    }
+                    if (!(existing instanceof Annonce annonce)) {
+                        return Mono.error(new IllegalStateException("Product is not an Annonce"));
+                    }
+
+                    if (request.title() != null) annonce.setTitle(request.title());
+                    if (request.departureLocation() != null) annonce.setDepartureLocation(request.departureLocation());
+                    if (request.dropoffLocation() != null) annonce.setDropoffLocation(request.dropoffLocation());
+                    if (request.startDate() != null) annonce.setStartDate(request.startDate());
+                    if (request.startTime() != null) annonce.setStartTime(request.startTime());
+                    if (request.endDate() != null) annonce.setEndDate(request.endDate());
+                    if (request.endTime() != null) annonce.setEndTime(request.endTime());
+                    if (request.status() != null) {
+                        try {
+                            annonce.setStatus(ProductStatus.valueOf(request.status()));
+                        } catch (IllegalArgumentException ex) {
+                            return Mono.error(new IllegalArgumentException("Invalid status: " + request.status()));
+                        }
+                    }
+                    if (request.reservedById() != null) {
+                        annonce.setReservedById(request.reservedById());
+                        if (annonce.getStatus() == ProductStatus.Published
+                                || annonce.getStatus() == ProductStatus.Draft) {
+                            annonce.setStatus(ProductStatus.PendingConfirmation);
+                        }
+                    }
+                    if (request.tripType() != null) annonce.setTripType(request.tripType());
+                    if (request.meetupPoint() != null) annonce.setMeetupPoint(request.meetupPoint());
+                    if (request.tripIntention() != null) annonce.setTripIntention(request.tripIntention());
+                    if (request.pricingMethod() != null) annonce.setPricingMethod(request.pricingMethod());
+                    if (request.isNegotiable() != null) annonce.setNegotiable(request.isNegotiable());
+                    if (request.paymentMethod() != null) annonce.setPaymentMethod(request.paymentMethod());
+                    if (request.cost() != null) annonce.setCost(request.cost());
+                    if (request.baggageInfo() != null) annonce.setBaggageInfo(request.baggageInfo());
+
+                    annonce.setUpdatedAt(Timestamp.from(Instant.now()));
+                    return productRepository.save(annonce);
+                });
+    }
+
+    public Mono<Void> deleteClientAnnonce(UUID authUserId, UUID annonceId, String token) {
+        return assertClient(authUserId, token)
+                .then(productRepository.findByIdAndProductType(annonceId, ANNONCE_TYPE))
+                .switchIfEmpty(Mono.error(new AccessDeniedException("Annonce not found")))
+                .flatMap(existing -> {
+                    if (existing.getClientId() == null || !existing.getClientId().equals(authUserId)) {
+                        return Mono.error(new AccessDeniedException("Access denied"));
+                    }
+                    return productRepository.deleteById(annonceId);
+                });
+    }
+
+    private Mono<Void> assertClient(UUID authUserId, String token) {
+        return actorRepository.findByUserId(authUserId, token)
+                .switchIfEmpty(Mono.error(new AccessDeniedException("No Business Actor found for this user")))
+                .flatMap(actor -> {
+                    if (!(actor instanceof ClientRole)) {
+                        return Mono.error(new AccessDeniedException("User is not a Client"));
+                    }
+                    return Mono.empty();
+                });
+    }
+}// END OF FILE: src/main/java/com/yowyob/template/application/service/ClientAnnonceService.java
+
+//---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/application/service/ClientProfileService.java
+
+package com.yowyob.template.application.service;
+
+import com.yowyob.template.domain.model.*;
+import com.yowyob.template.domain.ports.out.*;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+
+import java.util.UUID;
+
+@Service
+@RequiredArgsConstructor
+public class ClientProfileService {
+
+    private final BusinessActorRepositoryPort businessActorRepository;
+    private final OrganisationRepositoryPort organisationRepository;
+    private final ContactRepositoryPort contactRepository;
+    private final UserRepositoryPort userRepository;
+    private final AddressRepositoryPort addressRepository;
+
+    public Mono<ClientProfile> getProfile(UUID userId, String jwtToken) {
+        String token = jwtToken != null && jwtToken.startsWith("Bearer ") ? jwtToken.substring(7) : jwtToken;
+
+        return businessActorRepository.findByUserId(userId, token)
+                .flatMap(actor -> Mono.zip(
+                        userRepository.findById(userId, token),
+                        organisationRepository.findByActorId(actor.getId(), token)
+                            .switchIfEmpty(Mono.just(ClientOrganisation.builder().build()))
+                ).map(tuple -> ClientProfile.builder()
+                        .user(tuple.getT1())
+                        .actor(actor)
+                        .organisation(tuple.getT2().getId() == null ? null : tuple.getT2())
+                        .build()));
+    }
+
+    public Mono<BusinessActor> updateProfile(UUID userId, BusinessActor updatedActor, String jwtToken) {
+        String token = jwtToken != null && jwtToken.startsWith("Bearer ") ? jwtToken.substring(7) : jwtToken;
+        return businessActorRepository.findByUserId(userId, token)
+                .flatMap(existing -> {
+                    // Update allowed fields
+                    existing.setDisplayName(updatedActor.getDisplayName() != null ? updatedActor.getDisplayName() : existing.getDisplayName());
+                    existing.setPhoneNumber(updatedActor.getPhoneNumber() != null ? updatedActor.getPhoneNumber() : existing.getPhoneNumber());
+                    // ... other fields
+                    return businessActorRepository.save(existing, token);
+                });
+    }
+
+    public Flux<Contact> getContacts(UUID userId, String jwtToken) {
+        String token = jwtToken != null && jwtToken.startsWith("Bearer ") ? jwtToken.substring(7) : jwtToken;
+
+        return businessActorRepository.findByUserId(userId, token)
+                .flatMapMany(actor -> contactRepository.findAllByContactableId(actor.getId(), token));
+    }
+
+    public Mono<Contact> addContact(UUID userId, Contact contact, String jwtToken) {
+        String token = jwtToken != null && jwtToken.startsWith("Bearer ") ? jwtToken.substring(7) : jwtToken;
+
+        return businessActorRepository.findByUserId(userId, token)
+                .switchIfEmpty(Mono.error(new RuntimeException("Business Actor not found")))
+                .flatMap(actor -> {
+                    contact.setContactableId(actor.getId());
+                    contact.setContactableType("BUSINESS_ACTOR");
+                    return contactRepository.save(contact, token);
+                });
+    }
+
+    public Mono<Contact> updateContact(UUID userId, Contact contact, String jwtToken) {
+        String token = jwtToken != null && jwtToken.startsWith("Bearer ") ? jwtToken.substring(7) : jwtToken;
+        
+        return businessActorRepository.findByUserId(userId, token)
+            .flatMap(actor -> {
+                contact.setContactableId(actor.getId()); // ensure we preserve ownership info if needed
+                contact.setContactableType("BUSINESS_ACTOR");
+                return contactRepository.update(contact, token);
+            });
+    }
+
+    public Mono<Address> addAddress(UUID userId, Address address, String jwtToken) {
+        String token = jwtToken != null && jwtToken.startsWith("Bearer ") ? jwtToken.substring(7) : jwtToken;
+        
+        return businessActorRepository.findByUserId(userId, token)
+                 .flatMap(actor -> {
+                     address.setAddressableId(actor.getId());
+                     address.setAddressableType("BUSINESS_ACTOR");
+                     return addressRepository.save(address, token);
+                 });
+    }
+
+    public Mono<Address> updateAddress(UUID userId, Address address, String jwtToken) {
+        String token = jwtToken != null && jwtToken.startsWith("Bearer ") ? jwtToken.substring(7) : jwtToken;
+        
+        return businessActorRepository.findByUserId(userId, token)
+                .flatMap(actor -> {
+                    address.setAddressableId(actor.getId());
+                    address.setAddressableType("BUSINESS_ACTOR");
+                    return addressRepository.update(address, token);
+                });
+    }
+
+    public Mono<Void> deleteAddress(UUID userId, UUID addressId, String jwtToken) {
+        String token = jwtToken != null && jwtToken.startsWith("Bearer ") ? jwtToken.substring(7) : jwtToken;
+        return addressRepository.deleteById(addressId, token);
+    }
+    
+    public Mono<Void> deleteContact(UUID userId, UUID contactId, String jwtToken) {
+        String token = jwtToken != null && jwtToken.startsWith("Bearer ") ? jwtToken.substring(7) : jwtToken;
+        return contactRepository.deleteById(contactId, token);
+    }
+
+    public Flux<Address> getAddresses(UUID userId, String jwtToken) {
+        String token = jwtToken != null && jwtToken.startsWith("Bearer ") ? jwtToken.substring(7) : jwtToken;
+        return businessActorRepository.findByUserId(userId, token)
+            .flatMapMany(actor -> addressRepository.findAllByAddressableId(actor.getId(), token));
+    }
+}
+// END OF FILE: src/main/java/com/yowyob/template/application/service/ClientProfileService.java
+
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/application/service/ContactService.java
 
 package com.yowyob.template.application.service;
@@ -2100,19 +2391,215 @@ public class ContactService implements CreateContactUseCase, GetContactsUseCase 
     public Mono<Void> deleteContact(UUID id) {
         return repository.deleteById(id);
     }
+    
+    public Mono<Void> deleteContact(UUID id, String jwtToken) {
+        String token = jwtToken != null && jwtToken.startsWith("Bearer ") ? jwtToken.substring(7) : jwtToken;
+        return repository.deleteById(id, token);
+    }
 }
 // END OF FILE: src/main/java/com/yowyob/template/application/service/ContactService.java
+
+//---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/application/service/DriverPlanningService.java
+
+package com.yowyob.template.application.service;
+
+import com.yowyob.template.domain.model.DriverRole;
+import com.yowyob.template.domain.model.Planning;
+import com.yowyob.template.domain.model.Product;
+import com.yowyob.template.domain.model.ProductStatus;
+import com.yowyob.template.domain.ports.out.BusinessActorRepositoryPort;
+import com.yowyob.template.domain.ports.out.OrganisationRepositoryPort;
+import com.yowyob.template.domain.ports.out.ProductRepositoryPort;
+import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.request.CreatePlanningRequest;
+import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.request.UpdatePlanningRequest;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+
+import java.sql.Timestamp;
+import java.time.Instant;
+import java.util.UUID;
+
+@Service
+@RequiredArgsConstructor
+public class DriverPlanningService {
+
+    private final BusinessActorRepositoryPort actorRepository;
+    private final OrganisationRepositoryPort organisationRepository;
+    private final ProductRepositoryPort productRepository;
+
+    private static final String PLANNING_TYPE = "PLANNING";
+
+    public Mono<Product> createDriverPlanning(UUID authUserId, CreatePlanningRequest request, String token) {
+        
+        // 1. Trouver le BusinessActor associé à l'utilisateur connecté
+        return actorRepository.findByUserId(authUserId, token)
+            .switchIfEmpty(Mono.error(new AccessDeniedException("No Business Actor found for this user")))
+            .flatMap(actor -> {
+                
+                // 2. Vérifier que c'est bien un Driver
+                if (!(actor instanceof DriverRole)) {
+                    return Mono.error(new AccessDeniedException("User is not a Driver"));
+                }
+
+                // 3. Trouver son Organisation
+                return organisationRepository.findByActorId(actor.getId(), token)
+                    .switchIfEmpty(Mono.error(new RuntimeException("Driver has no Organisation")))
+                    .flatMap(organisation -> {
+                        
+                        // 4. Utiliser la Factory Method pour créer le Planning
+                        // Ici, on utilise un Builder pour construire l'objet à partir de la requête
+                        Planning planning = Planning.builder()
+                            .orgId(organisation.getId())
+                            .clientId(authUserId)
+                            .clientName(actor.getDisplayName())
+                            .clientPhoneNumber(actor.getPhoneNumber())
+                            .profileImageUrl(actor.getAvatarUrl())
+                            .title(request.title())
+                            .departureLocation(request.departureLocation())
+                            .dropoffLocation(request.dropoffLocation())
+                            .startDate(request.startDate())
+                            .startTime(request.startTime())
+                            .endDate(request.endDate())
+                            .endTime(request.endTime())
+                            .status(ProductStatus.Draft)
+                            .tripType(request.tripType())
+                            .meetupPoint(request.meetupPoint())
+                            .tripIntention(request.tripIntention())
+                            .pricingMethod(request.pricingMethod())
+                            .isNegotiable(request.isNegotiable() != null && request.isNegotiable())
+                            .paymentOption(request.paymentOption())
+                            .regularAmount(request.regularAmount())
+                            .discountPercentage(request.discountPercentage())
+                            .discountedAmount(request.discountedAmount())
+                            .createdAt(Timestamp.from(Instant.now()))
+                            .build();
+
+                        // 5. Sauvegarder via le ProductRepositoryPort
+                        return productRepository.save(planning);
+                    });
+            });
+    }
+
+    public Flux<Product> listDriverPlannings(UUID authUserId, String token) {
+        return assertDriver(authUserId, token)
+                .thenMany(productRepository.findByProductTypeAndClientId(PLANNING_TYPE, authUserId));
+    }
+
+    public Mono<Product> getDriverPlanning(UUID authUserId, UUID planningId, String token) {
+        return assertDriver(authUserId, token)
+                .then(productRepository.findByIdAndProductType(planningId, PLANNING_TYPE))
+                .switchIfEmpty(Mono.error(new AccessDeniedException("Planning not found")))
+                .flatMap(product -> {
+                    if (product.getClientId() == null || !product.getClientId().equals(authUserId)) {
+                        return Mono.error(new AccessDeniedException("Access denied"));
+                    }
+                    return Mono.just(product);
+                });
+    }
+
+    public Mono<Product> updateDriverPlanning(UUID authUserId, UUID planningId, UpdatePlanningRequest request, String token) {
+        return assertDriver(authUserId, token)
+                .then(productRepository.findByIdAndProductType(planningId, PLANNING_TYPE))
+                .switchIfEmpty(Mono.error(new AccessDeniedException("Planning not found")))
+                .flatMap(existing -> {
+                    if (existing.getClientId() == null || !existing.getClientId().equals(authUserId)) {
+                        return Mono.error(new AccessDeniedException("Access denied"));
+                    }
+                    if (!(existing instanceof Planning planning)) {
+                        return Mono.error(new IllegalStateException("Product is not a Planning"));
+                    }
+
+                    if (request.title() != null) planning.setTitle(request.title());
+                    if (request.departureLocation() != null) planning.setDepartureLocation(request.departureLocation());
+                    if (request.dropoffLocation() != null) planning.setDropoffLocation(request.dropoffLocation());
+                    if (request.startDate() != null) planning.setStartDate(request.startDate());
+                    if (request.startTime() != null) planning.setStartTime(request.startTime());
+                    if (request.endDate() != null) planning.setEndDate(request.endDate());
+                    if (request.endTime() != null) planning.setEndTime(request.endTime());
+                    if (request.status() != null) {
+                        try {
+                            planning.setStatus(ProductStatus.valueOf(request.status()));
+                        } catch (IllegalArgumentException ex) {
+                            return Mono.error(new IllegalArgumentException("Invalid status: " + request.status()));
+                        }
+                    }
+
+                    Mono<Void> reservedByCheck = Mono.empty();
+                    if (request.reservedById() != null) {
+                        reservedByCheck = organisationRepository.findById(request.reservedById(), token)
+                                .switchIfEmpty(Mono.error(new IllegalArgumentException(
+                                        "Unknown organisation id: " + request.reservedById())))
+                                .then();
+                    }
+
+                    return reservedByCheck.then(Mono.defer(() -> {
+                        if (request.reservedById() != null) {
+                            planning.setReservedById(request.reservedById());
+                            if (planning.getStatus() == ProductStatus.Published
+                                    || planning.getStatus() == ProductStatus.Draft) {
+                                planning.setStatus(ProductStatus.PendingConfirmation);
+                            }
+                        }
+                        if (request.tripType() != null) planning.setTripType(request.tripType());
+                        if (request.meetupPoint() != null) planning.setMeetupPoint(request.meetupPoint());
+                        if (request.tripIntention() != null) planning.setTripIntention(request.tripIntention());
+                        if (request.pricingMethod() != null) planning.setPricingMethod(request.pricingMethod());
+                        if (request.isNegotiable() != null) planning.setNegotiable(request.isNegotiable());
+                        if (request.paymentOption() != null) planning.setPaymentOption(request.paymentOption());
+                        if (request.regularAmount() != null) planning.setRegularAmount(request.regularAmount());
+                        if (request.discountPercentage() != null) planning.setDiscountPercentage(request.discountPercentage());
+                        if (request.discountedAmount() != null) planning.setDiscountedAmount(request.discountedAmount());
+                        planning.setUpdatedAt(Timestamp.from(Instant.now()));
+
+                        return productRepository.save(planning);
+                    }));
+                });
+    }
+
+    public Mono<Void> deleteDriverPlanning(UUID authUserId, UUID planningId, String token) {
+        return assertDriver(authUserId, token)
+                .then(productRepository.findByIdAndProductType(planningId, PLANNING_TYPE))
+                .switchIfEmpty(Mono.error(new AccessDeniedException("Planning not found")))
+                .flatMap(existing -> {
+                    if (existing.getClientId() == null || !existing.getClientId().equals(authUserId)) {
+                        return Mono.error(new AccessDeniedException("Access denied"));
+                    }
+                    return productRepository.deleteById(planningId);
+                });
+    }
+
+    private Mono<Void> assertDriver(UUID authUserId, String token) {
+        return actorRepository.findByUserId(authUserId, token)
+                .switchIfEmpty(Mono.error(new AccessDeniedException("No Business Actor found for this user")))
+                .flatMap(actor -> {
+                    if (!(actor instanceof DriverRole)) {
+                        return Mono.error(new AccessDeniedException("User is not a Driver"));
+                    }
+                    return Mono.empty();
+                });
+    }
+}// END OF FILE: src/main/java/com/yowyob/template/application/service/DriverPlanningService.java
 
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/application/service/DriverProfileService.java
 
 package com.yowyob.template.application.service;
 
+import com.yowyob.template.domain.model.Address;
 import com.yowyob.template.domain.model.Certification;
 import com.yowyob.template.domain.model.Contact;
+import com.yowyob.template.domain.model.DriverProfile;
+import com.yowyob.template.domain.model.Organisation;
+import com.yowyob.template.domain.model.User;
+import com.yowyob.template.domain.model.DriverOrganisation; 
+import com.yowyob.template.domain.ports.out.AddressRepositoryPort;
 import com.yowyob.template.domain.ports.out.BusinessActorRepositoryPort;
 import com.yowyob.template.domain.ports.out.CertificationRepositoryPort;
 import com.yowyob.template.domain.ports.out.ContactRepositoryPort;
 import com.yowyob.template.domain.ports.out.OrganisationRepositoryPort;
+import com.yowyob.template.domain.ports.out.UserRepositoryPort;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
@@ -2129,6 +2616,78 @@ public class DriverProfileService {
     private final BusinessActorRepositoryPort businessActorRepository;
     private final OrganisationRepositoryPort organisationRepository;
     private final ContactRepositoryPort contactRepository;
+    private final UserRepositoryPort userRepository;
+    private final AddressRepositoryPort addressRepository;
+
+
+    public Mono<DriverProfile> getProfile(UUID userId, String jwtToken) {
+        String token = jwtToken != null && jwtToken.startsWith("Bearer ") ? jwtToken.substring(7) : jwtToken;
+
+        return businessActorRepository.findByUserId(userId, token)
+                .flatMap(actor -> Mono.zip(
+                        userRepository.findById(userId, token),
+                        organisationRepository.findByActorId(actor.getId(), token)
+                            .switchIfEmpty(Mono.just(DriverOrganisation.builder().build()))
+                ).map(tuple -> DriverProfile.builder()
+                        .user(tuple.getT1())
+                        .actor(actor)
+                        .organisation(tuple.getT2().getId() == null ? null : tuple.getT2())
+                        .build()));
+    }
+
+    public Mono<Address> updateAddress(UUID userId, Address address, String jwtToken) {
+        String token = jwtToken != null && jwtToken.startsWith("Bearer ") ? jwtToken.substring(7) : jwtToken;
+
+        return businessActorRepository.findByUserId(userId, token)
+                .switchIfEmpty(Mono.error(new RuntimeException("Business Actor not found for user: " + userId)))
+                .flatMap(actor -> {
+                    address.setAddressableId(actor.getId());
+                    address.setAddressableType("BUSINESS_ACTOR"); 
+                    return addressRepository.update(address, token);
+                });
+    }
+
+    public Mono<Address> addAddress(UUID userId, Address address, String jwtToken) {
+        String token = jwtToken != null && jwtToken.startsWith("Bearer ") ? jwtToken.substring(7) : jwtToken;
+
+        return businessActorRepository.findByUserId(userId, token)
+                .switchIfEmpty(Mono.error(new RuntimeException("Business Actor not found for user: " + userId)))
+                .flatMap(actor -> {
+                    address.setAddressableId(actor.getId());
+                    address.setAddressableType("BUSINESS_ACTOR"); 
+                    return addressRepository.save(address, token);
+                });
+    }
+
+    public Mono<Contact> updateContact(UUID userId, Contact contact, String jwtToken) {
+        String token = jwtToken != null && jwtToken.startsWith("Bearer ") ? jwtToken.substring(7) : jwtToken;
+        
+        return businessActorRepository.findByUserId(userId, token)
+                .switchIfEmpty(Mono.error(new RuntimeException("Business Actor not found for user: " + userId)))
+                .flatMap(actor -> organisationRepository.findByActorId(actor.getId(), token))
+                .switchIfEmpty(Mono.error(new RuntimeException("Organisation not found for actor")))
+                .flatMap(org -> {
+                    contact.setContactableId(org.getId());
+                    contact.setContactableType("ORGANISATION"); 
+                    return contactRepository.update(contact, token);
+                });
+    }
+
+    public Flux<Address> getAddresses(UUID userId, String jwtToken) {
+        String token = jwtToken != null && jwtToken.startsWith("Bearer ") ? jwtToken.substring(7) : jwtToken;
+        return businessActorRepository.findByUserId(userId, token)
+            .flatMapMany(actor -> addressRepository.findAllByAddressableId(actor.getId(), token));
+    }
+
+    public Mono<Void> deleteAddress(UUID userId, UUID addressId, String jwtToken) {
+        String token = jwtToken != null && jwtToken.startsWith("Bearer ") ? jwtToken.substring(7) : jwtToken;
+        return addressRepository.deleteById(addressId, token);
+    }
+
+    public Mono<Void> deleteContact(UUID userId, UUID contactId, String jwtToken) {
+        String token = jwtToken != null && jwtToken.startsWith("Bearer ") ? jwtToken.substring(7) : jwtToken;
+        return contactRepository.deleteById(contactId, token);
+    }
 
     public Mono<Certification> requestCertification(UUID orgId, String syndicateName) {
         // Logic: 
@@ -2224,25 +2783,49 @@ public class OnboardingService {
     }
 
     public Mono<UserProfileResponse> becomeDriver(UUID userId, com.yowyob.template.infrastructure.adapters.inbound.rest.dto.NewRoleRequest request, String accessToken) {
-        User user = User.builder()
-                .id(userId)
-                .email(request.getEmail())
-                .firstName(request.getFirstName())
-                .lastName(request.getLastName())
-                .build();
-        return onboardBusinessActor(user, "DRIVER", request.getOrganisationName(),
-                request.getOrganisationDescription(), request.getPhone(), request.getTitle(), request.getAddress(), accessToken, null);
+        return ensureRoleNotExists(userId, "DRIVER")
+                .then(resolveUserProfile(userId, request, accessToken))
+                .flatMap(user -> onboardBusinessActor(user, "DRIVER", request.getOrganisationName(),
+                        request.getOrganisationDescription(), request.getPhone(), request.getTitle(), request.getAddress(), accessToken, null));
     }
 
     public Mono<UserProfileResponse> becomeClient(UUID userId, com.yowyob.template.infrastructure.adapters.inbound.rest.dto.NewRoleRequest request, String accessToken) {
-        User user = User.builder()
-                .id(userId)
-                .email(request.getEmail())
-                .firstName(request.getFirstName())
-                .lastName(request.getLastName())
-                .build();
-        return onboardBusinessActor(user, "CLIENT", request.getOrganisationName(),
-                request.getOrganisationDescription(), request.getPhone(), request.getTitle(), request.getAddress(), accessToken, null);
+        return ensureRoleNotExists(userId, "CLIENT")
+                .then(resolveUserProfile(userId, request, accessToken))
+                .flatMap(user -> onboardBusinessActor(user, "CLIENT", request.getOrganisationName(),
+                        request.getOrganisationDescription(), request.getPhone(), request.getTitle(), request.getAddress(), accessToken, null));
+    }
+
+    private Mono<User> resolveUserProfile(UUID userId, com.yowyob.template.infrastructure.adapters.inbound.rest.dto.NewRoleRequest request, String accessToken) {
+        return actorRepository.findByUserId(userId, accessToken)
+                .defaultIfEmpty(ClientRole.builder().build())
+                .map(actor -> {
+                    String displayName = actor.getDisplayName() != null ? actor.getDisplayName().trim() : "";
+                    String[] names = displayName.split(" ", 2);
+                    String fallbackFirstName = names.length > 0 ? names[0] : null;
+                    String fallbackLastName = names.length > 1 ? names[1] : null;
+
+                    String firstName = request.getFirstName() != null ? request.getFirstName() : fallbackFirstName;
+                    String lastName = request.getLastName() != null ? request.getLastName() : fallbackLastName;
+                    String email = request.getEmail() != null ? request.getEmail() : actor.getEmailAddress();
+
+                    return User.builder()
+                            .id(userId)
+                            .email(email)
+                            .firstName(firstName)
+                            .lastName(lastName)
+                            .build();
+                });
+    }
+
+    private Mono<Void> ensureRoleNotExists(UUID userId, String roleType) {
+        return actorRepository.findAll()
+                .filter(actor -> userId.equals(actor.getUserId()))
+                .filter(actor -> roleType.equalsIgnoreCase(actor.getRoleType()))
+                .hasElements()
+                .flatMap(exists -> exists
+                        ? Mono.error(new IllegalStateException("User already has role: " + roleType))
+                        : Mono.empty());
     }
 
     private Mono<UserProfileResponse> onboardBusinessActor(User user, String roleType, String orgName, String orgDesc, String phone, String title, String addressString, String accessToken, String refreshToken) {
@@ -2397,8 +2980,9 @@ public class OrganisationService implements OrganisationUseCase {
 package com.yowyob.template.application.service;
 
 import com.yowyob.template.domain.model.Product;
-import com.yowyob.template.domain.ports.in.CreateProductUseCase;
-import com.yowyob.template.domain.ports.out.*;
+import com.yowyob.template.domain.ports.in.CreateProductUseCase; // Assure-toi que cette interface existe et correspond
+import com.yowyob.template.domain.ports.out.ProductRepositoryPort;
+import com.yowyob.template.domain.ports.out.ProductEventPublisherPort;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -2406,68 +2990,72 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.sql.Timestamp;
-import java.util.Map;
+import java.time.Instant;
 import java.util.UUID;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ProductService implements CreateProductUseCase {
-    private final ProductRepositoryPort repository;
-    private final OrganisationRepositoryPort organisationRepository;
-    private final StockClientPort stockClient;
-    private final ProductCachePort cache;
-    private final ProductEventPublisherPort publisher;
+    @Override
+    public Mono<Product> createProductForOrganisation(UUID organisationId, java.util.Map<String, Object> params) {
+        // Exemple d'implémentation générique, à adapter selon la logique métier
+        Product product = null;
+        // Ici, il faudrait instancier le bon type de Product (Annonce, Planning, etc.) selon params
+        // et remplir les champs nécessaires. Pour l'instant, on laisse null ou on peut lever une exception.
+        return Mono.error(new UnsupportedOperationException("createProductForOrganisation n'est pas encore implémenté"));
+    }
 
+    private final ProductRepositoryPort productRepository;
+    private final ProductEventPublisherPort eventPublisher;
+
+    // Cette méthode reste pour des cas d'usage génériques ou internes si nécessaire,
+    // mais la création principale se fait via les services spécifiques (Driver/Client)
     @Override
     public Mono<Product> createProduct(Product product) {
-        product.setCreatedAt(new Timestamp(System.currentTimeMillis()));
-        return repository.save(product)
-                .flatMap(saved -> publisher.publishProductCreated(saved).thenReturn(saved));
+        product.setCreatedAt(Timestamp.from(Instant.now()));
+        return productRepository.save(product)
+                .flatMap(saved -> eventPublisher.publishProductCreated(saved).thenReturn(saved));
     }
-
-    @Override
-    public Mono<Product> createProductForOrganisation(UUID organisationId, Map<String, Object> params) {
-        return organisationRepository.findById(organisationId)
-                .flatMap(org -> {
-                    Product product = org.createProduct(params);
-                    product.setCreatedAt(new Timestamp(System.currentTimeMillis()));
-                    return repository.save(product)
-                            .flatMap(saved -> publisher.publishProductCreated(saved).thenReturn(saved));
-                });
-    }
-
+    
     @Override
     public Mono<Product> getProductById(UUID id) {
-        return repository.findById(id);
+        return productRepository.findById(id);
     }
 
     @Override
     public Flux<Product> getAllProducts() {
-        return repository.findAll();
+        return productRepository.findAll();
     }
 
+    // Note : Cette méthode de mise à jour est générique.
+    // Pour une mise à jour sécurisée, il faudrait une méthode qui vérifie la propriété,
+    // comme on l'a fait dans les services Driver/Client.
     @Override
     public Mono<Product> updateProduct(UUID id, Product product) {
-        return repository.findById(id)
+        return productRepository.findById(id)
                 .flatMap(existing -> {
+                    // Mappe les champs modifiables. Attention, ceci est un exemple simple.
+                    // Une vraie implémentation utiliserait un DTO pour ne pas écraser les champs non modifiables.
                     existing.setTitle(product.getTitle() != null ? product.getTitle() : existing.getTitle());
-                    existing.setDescription(product.getDescription() != null ? product.getDescription() : existing.getDescription());
                     existing.setStatus(product.getStatus() != null ? product.getStatus() : existing.getStatus());
-                    existing.setUpdatedAt(new Timestamp(System.currentTimeMillis()));
-                    return repository.save(existing)
-                            .flatMap(saved -> publisher.publishProductUpdated(saved).thenReturn(saved));
+                    existing.setUpdatedAt(Timestamp.from(Instant.now()));
+                    return productRepository.save(existing)
+                            .flatMap(saved -> eventPublisher.publishProductUpdated(saved).thenReturn(saved));
                 });
     }
 
     @Override
     public Mono<Void> deleteProduct(UUID id) {
-        return repository.findById(id)
-                .flatMap(product -> repository.deleteById(id)
-                        .then(publisher.publishProductDeleted(product)));
+        return productRepository.findById(id)
+                .flatMap(product -> productRepository.deleteById(id)
+                        .then(eventPublisher.publishProductDeleted(product)));
     }
-}
-// END OF FILE: src/main/java/com/yowyob/template/application/service/ProductService.java
+    
+    // La méthode createProductForOrganisation n'est plus dans cette interface/service
+    // car elle est maintenant gérée par DriverPlanningService et ClientAnnonceService.
+    // Si ton interface CreateProductUseCase la contient encore, tu devrais la retirer.
+}// END OF FILE: src/main/java/com/yowyob/template/application/service/ProductService.java
 
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/application/service/ReactionService.java
 
@@ -2837,16 +3425,16 @@ import lombok.experimental.SuperBuilder;
 
 import java.time.OffsetDateTime;
 
-@Getter
-@Setter
-@SuperBuilder
-@NoArgsConstructor
+@Getter 
+@Setter 
+@SuperBuilder 
+@NoArgsConstructor 
 @AllArgsConstructor
 public class Annonce extends Product {
-    private OffsetDateTime requiredDate;
-    private String category;
-}
-// END OF FILE: src/main/java/com/yowyob/template/domain/model/Annonce.java
+    // Les champs comme departureLocation sont maintenant dans la classe Product (en String)
+    private String cost;
+    private String baggageInfo;
+}// END OF FILE: src/main/java/com/yowyob/template/domain/model/Annonce.java
 
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/domain/model/BusinessActor.java
 
@@ -2859,6 +3447,7 @@ import lombok.Setter;
 import lombok.experimental.SuperBuilder;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -2874,6 +3463,7 @@ public abstract class BusinessActor implements Reviewable, Reactable {
     private String phoneNumber;
     private String emailAddress;
     private String avatarUrl;
+    private List<String> languages;
 
     public abstract String getRoleType();
 
@@ -2985,6 +3575,22 @@ public class ClientOrganisation extends Organisation {
     }
 }
 // END OF FILE: src/main/java/com/yowyob/template/domain/model/ClientOrganisation.java
+
+//---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/domain/model/ClientProfile.java
+
+package com.yowyob.template.domain.model;
+
+import lombok.Builder;
+import lombok.Data;
+
+@Data
+@Builder
+public class ClientProfile {
+    private User user;
+    private BusinessActor actor;
+    private Organisation organisation;
+}
+// END OF FILE: src/main/java/com/yowyob/template/domain/model/ClientProfile.java
 
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/domain/model/ClientRole.java
 
@@ -3106,6 +3712,22 @@ public class DriverOrganisation extends Organisation {
 }
 // END OF FILE: src/main/java/com/yowyob/template/domain/model/DriverOrganisation.java
 
+//---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/domain/model/DriverProfile.java
+
+package com.yowyob.template.domain.model;
+
+import lombok.Builder;
+import lombok.Data;
+
+@Data
+@Builder
+public class DriverProfile {
+    private User user;
+    private BusinessActor actor;
+    private Organisation organisation;
+}
+// END OF FILE: src/main/java/com/yowyob/template/domain/model/DriverProfile.java
+
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/domain/model/DriverRole.java
 
 package com.yowyob.template.domain.model;
@@ -3124,6 +3746,7 @@ import lombok.experimental.SuperBuilder;
 public class DriverRole extends BusinessActor {
     private String licenseNumber;
     private Integer yearsExperience;
+    private String driverType;
 
     @Override
     public String getRoleType() {
@@ -3354,25 +3977,17 @@ import lombok.experimental.SuperBuilder;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
 
-@Getter
-@Setter
+@Getter 
+@Setter 
 @SuperBuilder
-@NoArgsConstructor
+@NoArgsConstructor 
 @AllArgsConstructor
 public class Planning extends Product {
-    private OffsetDateTime departureTime;
-    private OffsetDateTime arrivalTime;
-    private Address departureLocation;
-    private Address arrivalLocation;
-    private Integer availableSeats;
-    private Boolean baggageAllowed;
-    private Boolean isNegotiable;
-    
-    // Fields from schema.sql that match
-    private LocalTime startTime;
-    private LocalTime endTime;
-    private String baggageInfo;
-    private String paymentMethod;
+    // Les champs comme departureLocation sont maintenant dans la classe Product (en String)
+    private String paymentOption;
+    private String regularAmount;
+    private String discountPercentage;
+    private String discountedAmount;
 }
 // END OF FILE: src/main/java/com/yowyob/template/domain/model/Planning.java
 
@@ -3459,86 +4074,81 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 public abstract class Product implements Reviewable, Reactable, IAsset {
+    
     private UUID id;
     private UUID orgId;
+
+    // Données dénormalisées de l'auteur
+    private UUID clientId;
+    private String clientName;
+    private String clientPhoneNumber;
+    private String profileImageUrl;
+
+    // Champs communs
     private String title;
-    private String description;
+    private String departureLocation;
+    private String dropoffLocation;
+    private OffsetDateTime startDate;
+    private LocalTime startTime;
+    private OffsetDateTime endDate;
+    private LocalTime endTime;
+    private UUID reservedById;
+    private boolean isNegotiable;
+    private String paymentMethod;
     private ProductStatus status;
-    private BigDecimal price;
     private Timestamp createdAt;
     private Timestamp updatedAt;
-    
-    // Additional fields from schema.sql
-    private String name;
-    private Boolean isActive;
-    private String standardPrice;
-    private List<String> productUrls;
-    private String regularAmount;
-    private BigDecimal discountPercentage;
-    private BigDecimal discountedAmount;
+
+    // Nouveaux champs du formulaire
+    private TripType tripType;
+    private String meetupPoint;
+    private String tripIntention;
+    private String pricingMethod;
     
     @Builder.Default
     private List<String> metadata = new ArrayList<>();
 
-    public void publish() {
-        this.status = ProductStatus.PUBLISHED;
-    }
+    // Méthodes des interfaces
+    @Override
+    public UUID getAssetId() { return id; }
 
     @Override
-    public UUID getAssetId() {
-        return id;
-    }
+    public UUID getOwnerId() { return orgId; }
 
     @Override
-    public UUID getOwnerId() {
-        return orgId;
-    }
+    public UUID getReviewableId() { return id; }
 
     @Override
-    public UUID getReviewableId() {
-        return id;
-    }
+    public SubjectType getReviewableType() { return SubjectType.PRODUCT; }
 
     @Override
-    public SubjectType getReviewableType() {
-        return SubjectType.PRODUCT;
-    }
+    public Double getAverageRating() { return 0.0; } // Logique à implémenter
 
     @Override
-    public Double getAverageRating() {
-        return 0.0;
-    }
+    public UUID getReactableId() { return id; }
 
     @Override
-    public UUID getReactableId() {
-        return id;
-    }
+    public SubjectType getReactableType() { return SubjectType.PRODUCT; }
 
     @Override
-    public SubjectType getReactableType() {
-        return SubjectType.PRODUCT;
-    }
-
-    @Override
-    public Map<ReactionType, Long> getReactionCounts() {
-        return new HashMap<>();
-    }
-}
-// END OF FILE: src/main/java/com/yowyob/template/domain/model/Product.java
+    public Map<ReactionType, Long> getReactionCounts() { return new HashMap<>(); } // Logique à implémenter
+}// END OF FILE: src/main/java/com/yowyob/template/domain/model/Product.java
 
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/domain/model/ProductStatus.java
 
 package com.yowyob.template.domain.model;
 
 public enum ProductStatus {
-    DRAFT, 
-    WAITING_CONFIRMATION, 
-    PUBLISHED, 
-    IN_PROGRESS, 
-    CANCELLED, 
-    EXPIRED
-}
-// END OF FILE: src/main/java/com/yowyob/template/domain/model/ProductStatus.java
+    Draft,
+    Published,
+    PendingConfirmation,
+    PendingDriverConfirmation,
+    Confirmed,
+    Ongoing,
+    Terminated,
+    Expired,
+    Cancelled
+}// END OF FILE: src/main/java/com/yowyob/template/domain/model/ProductStatus.java
 
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/domain/model/Reactable.java
 
@@ -3781,6 +4391,16 @@ public enum SubjectType {
     REVIEW
 }
 // END OF FILE: src/main/java/com/yowyob/template/domain/model/SubjectType.java
+
+//---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/domain/model/TripType.java
+
+
+package com.yowyob.template.domain.model;
+
+public enum TripType {
+    ONE_WAY,
+    ROUND_TRIP
+}// END OF FILE: src/main/java/com/yowyob/template/domain/model/TripType.java
 
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/domain/model/User.java
 
@@ -4074,9 +4694,12 @@ import java.util.UUID;
 public interface AddressRepositoryPort {
     Mono<Address> save(Address address);
     Mono<Address> save(Address address, String jwtToken);
+    Mono<Address> update(Address address, String jwtToken);
     Mono<Address> findById(UUID id);
     Flux<Address> findAll();
+    Flux<Address> findAllByAddressableId(UUID addressableId, String jwtToken);
     Mono<Void> deleteById(UUID id);
+    Mono<Void> deleteById(UUID id, String jwtToken);
     Mono<Void> deleteAll();
     
 }
@@ -4155,6 +4778,7 @@ public interface ContactRepositoryPort {
 
     Mono<Contact> save(Contact contact);
     Mono<Contact> save(Contact contact, String jwtToken);
+    Mono<Contact> update(Contact contact, String jwtToken);
 
     Mono<Contact> findById(UUID id);
 
@@ -4165,6 +4789,7 @@ public interface ContactRepositoryPort {
     Flux<Contact> findAllByContactableId(UUID contactableId, String jwtToken);
 
     Mono<Void> deleteById(UUID id);
+    Mono<Void> deleteById(UUID id, String jwtToken);
 
     Mono<Void> deleteAll();
     
@@ -4185,6 +4810,7 @@ public interface OrganisationRepositoryPort {
     Mono<Organisation> save(Organisation organisation);
     Mono<Organisation> save(Organisation organisation, String jwtToken);
     Mono<Organisation> findById(UUID id);
+    Mono<Organisation> findById(UUID id, String jwtToken);
     Mono<Organisation> findByActorId(UUID actorId);
     Mono<Organisation> findByActorId(UUID actorId, String jwtToken);
     Flux<Organisation> findAll();
@@ -4233,7 +4859,9 @@ import reactor.core.publisher.Mono;
 public interface ProductRepositoryPort {
     Mono<Product> save(Product product);
     Mono<Product> findById(UUID id);
+    Mono<Product> findByIdAndProductType(UUID id, String productType);
     Flux<Product> findAll();
+    Flux<Product> findByProductTypeAndClientId(String productType, UUID clientId);
     Mono<Void> deleteById(UUID id);
     Mono<Void> deleteAll();
 }// END OF FILE: src/main/java/com/yowyob/template/domain/ports/out/ProductRepositoryPort.java
@@ -4354,6 +4982,7 @@ import java.util.UUID;
 
 public interface UserRepositoryPort {
     Mono<User> findById(UUID id);
+    Mono<User> findById(UUID id, String jwtToken);
     Mono<User> findByEmail(String email);
     Mono<User> updateUser(UUID id, User user);
     Mono<Void> updatePassword(UUID id, String currentPassword, String newPassword);
@@ -4396,8 +5025,15 @@ public class ProductEventConsumer {
 
     @KafkaListener(topics = "${application.kafka.topics.product-events}", groupId = "template-group")
     public void consume(Product product) {
-        log.info("CONSUMER: I received an event for product with name : {} and standardPrice : {}", 
-             product.getName(), product.getStandardPrice());
+        // Utilise getTitle() pour le nom, et tente d'afficher le prix selon le type de produit
+        String price = null;
+        if (product instanceof com.yowyob.template.domain.model.Annonce annonce) {
+            price = annonce.getCost();
+        } else if (product instanceof com.yowyob.template.domain.model.Planning planning) {
+            price = planning.getRegularAmount();
+        }
+        log.info("CONSUMER: I received an event for product with title : {} and price : {}", 
+             product.getTitle(), price);
     }
 }// END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/inbound/kafka/ProductEventConsumer.java
 
@@ -4437,16 +5073,22 @@ public class AuthController {
 
 package com.yowyob.template.infrastructure.adapters.inbound.rest;
 
+import com.yowyob.template.application.service.ClientAnnonceService;
 import com.yowyob.template.domain.model.Product;
-import com.yowyob.template.domain.ports.in.CreateProductUseCase;
+import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.request.CreateAnnonceRequest;
+import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.request.UpdateAnnonceRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.core.OAuth2AuthenticatedPrincipal;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import io.swagger.v3.oas.annotations.Parameter;
 
-import java.util.Map;
+
 import java.util.UUID;
 
 @RestController
@@ -4454,39 +5096,65 @@ import java.util.UUID;
 @RequiredArgsConstructor
 @Tag(name = "Client Annonces", description = "Gestion des annonces (demandes de trajet) pour les Clients")
 public class ClientAnnonceController {
-    private final CreateProductUseCase productService;
+    
+    private final ClientAnnonceService annonceService;
+    private final com.yowyob.template.application.service.ProductService productService;
 
     @PostMapping
-    @Operation(summary = "Créer une annonce", description = "Publie une demande de trajet ou annonce pour l'organisation du client.")
-    public Mono<Product> createAnnonce(@RequestParam UUID organisationId, @RequestBody Map<String, Object> params) {
-        return productService.createProductForOrganisation(organisationId, params);
+    @Operation(summary = "Créer une annonce", description = "Publie une nouvelle demande de trajet pour le client connecté.")
+    public Mono<Product> createAnnonce(
+            @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+            @Parameter(hidden = true) @RequestHeader(name = "Authorization") String token,
+            @Valid @RequestBody CreateAnnonceRequest request
+    ) {
+        UUID authUserId = UUID.fromString(principal.getAttribute("sub"));
+        return annonceService.createClientAnnonce(authUserId, request, token);
     }
 
     @GetMapping
-    @Operation(summary = "Lister les annonces", description = "Récupère toutes les annonces disponibles.")
-    public Flux<Product> getAllAnnonces() {
-        return productService.getAllProducts();
+    @Operation(summary = "Lister les annonces", description = "Récupère la liste des demandes de trajet pour le client connecté.")
+    public Flux<Product> listAnnonces(
+            @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+            @Parameter(hidden = true) @RequestHeader(name = "Authorization") String token
+    ) {
+        UUID authUserId = UUID.fromString(principal.getAttribute("sub"));
+        return annonceService.listClientAnnonces(authUserId, token);
     }
 
     @GetMapping("/{id}")
-    @Operation(summary = "Obtenir une annonce", description = "Récupère les détails d'une annonce spécifique par ID.")
-    public Mono<Product> getAnnonce(@PathVariable UUID id) {
-        return productService.getProductById(id);
+    @Operation(summary = "Récupérer une annonce", description = "Récupère une demande de trajet spécifique pour le client connecté.")
+    public Mono<Product> getAnnonce(
+            @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+            @Parameter(hidden = true) @RequestHeader(name = "Authorization") String token,
+            @PathVariable UUID id
+    ) {
+        UUID authUserId = UUID.fromString(principal.getAttribute("sub"));
+        return annonceService.getClientAnnonce(authUserId, id, token);
     }
 
     @PutMapping("/{id}")
-    @Operation(summary = "Mettre à jour une annonce", description = "Modifie les informations d'une annonce existante.")
-    public Mono<Product> updateAnnonce(@PathVariable UUID id, @RequestBody Product product) {
-        return productService.updateProduct(id, product);
+    @Operation(summary = "Mettre à jour une annonce", description = "Met à jour une demande de trajet spécifique pour le client connecté.")
+    public Mono<Product> updateAnnonce(
+            @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+            @Parameter(hidden = true) @RequestHeader(name = "Authorization") String token,
+            @PathVariable UUID id,
+            @Valid @RequestBody UpdateAnnonceRequest request
+    ) {
+        UUID authUserId = UUID.fromString(principal.getAttribute("sub"));
+        return annonceService.updateClientAnnonce(authUserId, id, request, token);
     }
 
     @DeleteMapping("/{id}")
-    @Operation(summary = "Supprimer une annonce", description = "Supprime une annonce du système.")
-    public Mono<Void> deleteAnnonce(@PathVariable UUID id) {
-        return productService.deleteProduct(id);
+    @Operation(summary = "Supprimer une annonce", description = "Supprime une demande de trajet spécifique pour le client connecté.")
+    public Mono<Void> deleteAnnonce(
+            @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+            @Parameter(hidden = true) @RequestHeader(name = "Authorization") String token,
+            @PathVariable UUID id
+    ) {
+        UUID authUserId = UUID.fromString(principal.getAttribute("sub"));
+        return annonceService.deleteClientAnnonce(authUserId, id, token);
     }
-}
-// END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/ClientAnnonceController.java
+}// END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/ClientAnnonceController.java
 
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/ClientProfileController.java
 
@@ -4495,15 +5163,16 @@ package com.yowyob.template.infrastructure.adapters.inbound.rest;
 import com.yowyob.template.domain.model.Address;
 import com.yowyob.template.domain.model.BusinessActor;
 import com.yowyob.template.domain.model.Contact;
-import com.yowyob.template.domain.ports.in.createAddressUseCase;
-import com.yowyob.template.domain.ports.in.createBusinessActorUseCase;
-import com.yowyob.template.domain.ports.in.CreateContactUseCase;
-import com.yowyob.template.domain.ports.in.GetContactsUseCase;
+import com.yowyob.template.application.service.ClientProfileService;
 import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.AddressRequest;
 import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.ContactRequest;
+import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.UserProfileResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.core.OAuth2AuthenticatedPrincipal;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -4516,36 +5185,55 @@ import java.util.UUID;
 @Tag(name = "Client Profile", description = "Gestion du profil Client et de ses informations associées")
 public class ClientProfileController {
 
-    private final createBusinessActorUseCase businessActorService;
-    private final createAddressUseCase addressService;
-    private final CreateContactUseCase contactService;
-    private final GetContactsUseCase getContactsUseCase;
+    private final ClientProfileService clientProfileService;
 
-    @GetMapping("/{id}")
-    @Operation(summary = "Obtenir le profil", description = "Récupère les informations de base de l'acteur Business (Client) par ID.")
-    public Mono<BusinessActor> getProfile(@PathVariable UUID id) {
-        return businessActorService.getBusinessActorById(id);
+    @GetMapping
+    @Operation(summary = "Obtenir le profil", description = "Récupère les informations du profil Client (Authentifié).")
+    public Mono<UserProfileResponse> getProfile(@AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+                                                @Parameter(hidden = true) @RequestHeader(name = "Authorization") String authHeader) {
+        if (principal == null) {
+            return Mono.error(new RuntimeException("Unauthorized"));
+        }
+        String sub = principal.getAttribute("sub");
+        UUID userId = UUID.fromString(sub);
+
+        return clientProfileService.getProfile(userId, authHeader)
+                .map(profile -> UserProfileResponse.builder()
+                        .user(profile.getUser())
+                        .actor(profile.getActor())
+                        .organisation(profile.getOrganisation())
+                        .build());
     }
 
-    @PutMapping("/{id}")
+    @PutMapping
     @Operation(summary = "Mettre à jour le profil", description = "Met à jour les informations de base du client.")
-    public Mono<BusinessActor> updateProfile(@PathVariable UUID id, @RequestBody BusinessActor actor) {
-        return businessActorService.updateBusinessActor(id, actor);
+    public Mono<BusinessActor> updateProfile(@AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+                                             @Parameter(hidden = true) @RequestHeader(name = "Authorization") String authHeader,
+                                             @RequestBody BusinessActor actor) {
+        String sub = principal.getAttribute("sub");
+        UUID userId = UUID.fromString(sub);
+        return clientProfileService.updateProfile(userId, actor, authHeader);
     }
     
-    @GetMapping("/{id}/contacts")
+    @GetMapping("/contacts")
     @Operation(summary = "Lister les contacts", description = "Récupère les contacts du client.")
-    public Flux<Contact> getContacts(@PathVariable UUID id, @RequestHeader(name = "Authorization", required = false) String authHeader) {
-        return getContactsUseCase.getContacts(id, authHeader);
+    public Flux<Contact> getContacts(@AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+                                     @Parameter(hidden = true) @RequestHeader(name = "Authorization", required = false) String authHeader) {
+        String sub = principal.getAttribute("sub");
+        UUID userId = UUID.fromString(sub);
+        return clientProfileService.getContacts(userId, authHeader);
     }
 
-    @PostMapping("/{id}/addresses")
+    @PostMapping("/addresses")
     @Operation(summary = "Ajouter une adresse", description = "Associe une nouvelle adresse au profil client.")
-    public Mono<Address> addAddress(@PathVariable UUID id, @RequestBody AddressRequest request) {
+    public Mono<Address> addAddress(@AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+                                    @Parameter(hidden = true) @RequestHeader(name = "Authorization") String authHeader,
+                                    @RequestBody AddressRequest request) {
+        String sub = principal.getAttribute("sub");
+        UUID userId = UUID.fromString(sub);
+
         Address address = Address.builder()
                 .id(UUID.randomUUID())
-                .addressableId(id)
-                .addressableType(request.addressableType()) 
                 .type(request.type())
                 .addressLine1(request.addressLine1())
                 .addressLine2(request.addressLine2())
@@ -4561,16 +5249,18 @@ public class ClientProfileController {
                 .latitude(request.latitude())
                 .longitude(request.longitude())
                 .build();
-        return addressService.createAddress(address);
+        return clientProfileService.addAddress(userId, address, authHeader);
     }
 
-    @PostMapping("/{id}/contacts")
+    @PostMapping("/contacts")
     @Operation(summary = "Ajouter un contact", description = "Associe un nouveau contact au profil client.")
-    public Mono<Contact> addContact(@PathVariable UUID id, @RequestBody ContactRequest request) {
+    public Mono<Contact> addContact(@AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+                                    @Parameter(hidden = true) @RequestHeader(name = "Authorization") String authHeader,
+                                    @RequestBody ContactRequest request) {
+        String sub = principal.getAttribute("sub");
+        UUID userId = UUID.fromString(sub);
+
         Contact contact = Contact.builder()
-                .id(UUID.randomUUID())
-                .contactableId(id)
-                .contactableType(request.contactableType())
                 .firstName(request.firstName())
                 .lastName(request.lastName())
                 .title(request.title())
@@ -4583,25 +5273,115 @@ public class ClientProfileController {
                 .email(request.email())
                 .secondaryEmail(request.secondaryEmail())
                 .build();
-        return contactService.createContact(contact);
+        return clientProfileService.addContact(userId, contact, authHeader);
+    }
+
+    @PutMapping("/contacts/{id}")
+    @Operation(summary = "Mettre à jour un contact", description = "Met à jour un contact existant du profil client.")
+    public Mono<Contact> updateContact(@AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+                                       @Parameter(hidden = true) @RequestHeader(name = "Authorization") String authHeader,
+                                       @PathVariable UUID id,
+                                       @RequestBody ContactRequest request) {
+        String sub = principal.getAttribute("sub");
+        UUID userId = UUID.fromString(sub);
+
+        Contact contact = Contact.builder()
+                .id(id)
+                .firstName(request.firstName())
+                .lastName(request.lastName())
+                .title(request.title())
+                .isEmailVerified(request.isEmailVerified())
+                .isPhoneNumberVerified(request.isPhoneNumberVerified())
+                .isFavorite(request.isFavorite())
+                .phoneNumber(request.phoneNumber())
+                .secondaryPhoneNumber(request.secondaryPhoneNumber())
+                .faxNumber(request.faxNumber())
+                .email(request.email())
+                .secondaryEmail(request.secondaryEmail())
+                .build();
+        return clientProfileService.updateContact(userId, contact, authHeader);
+    }
+
+    @DeleteMapping("/contacts/{id}")
+    @Operation(summary = "Supprimer un contact", description = "Supprime un contact du profil client.")
+    public Mono<Void> deleteContact(@AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+                                    @Parameter(hidden = true) @RequestHeader(name = "Authorization") String authHeader,
+                                    @PathVariable UUID id) {
+        String sub = principal.getAttribute("sub");
+        UUID userId = UUID.fromString(sub);
+        return clientProfileService.deleteContact(userId, id, authHeader);
+    }
+
+    @GetMapping("/addresses")
+    @Operation(summary = "Lister les adresses", description = "Récupère les adresses du client.")
+    public Flux<Address> getAddresses(@AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+                                      @Parameter(hidden = true) @RequestHeader(name = "Authorization") String authHeader) {
+        String sub = principal.getAttribute("sub");
+        UUID userId = UUID.fromString(sub);
+        return clientProfileService.getAddresses(userId, authHeader);
+    }
+
+    @PutMapping("/addresses/{id}")
+    @Operation(summary = "Mettre à jour une adresse", description = "Met à jour une adresse existante du profil client.")
+    public Mono<Address> updateAddress(@AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+                                       @Parameter(hidden = true) @RequestHeader(name = "Authorization") String authHeader,
+                                       @PathVariable UUID id,
+                                       @RequestBody AddressRequest request) {
+        String sub = principal.getAttribute("sub");
+        UUID userId = UUID.fromString(sub);
+
+        Address address = Address.builder()
+                .id(id)
+                .type(request.type())
+                .addressLine1(request.addressLine1())
+                .addressLine2(request.addressLine2())
+                .city(request.city())
+                .state(request.state())
+                .locality(request.locality())
+                .zipCode(request.zipCode())
+                .postalCode(request.postalCode())
+                .poBox(request.poBox())
+                .isDefault(request.isDefault())
+                .neighborhood(request.neighborhood())
+                .informalDescription(request.informalDescription())
+                .latitude(request.latitude())
+                .longitude(request.longitude())
+                .build();
+        return clientProfileService.updateAddress(userId, address, authHeader);
+    }
+
+    @DeleteMapping("/addresses/{id}")
+    @Operation(summary = "Supprimer une adresse", description = "Supprime une adresse du profil client.")
+    public Mono<Void> deleteAddress(@AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+                                    @Parameter(hidden = true) @RequestHeader(name = "Authorization") String authHeader,
+                                    @PathVariable UUID id) {
+        String sub = principal.getAttribute("sub");
+        UUID userId = UUID.fromString(sub);
+        return clientProfileService.deleteAddress(userId, id, authHeader);
     }
 }
+
 // END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/ClientProfileController.java
 
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/DriverPlanningController.java
 
 package com.yowyob.template.infrastructure.adapters.inbound.rest;
 
+import com.yowyob.template.application.service.DriverPlanningService;
 import com.yowyob.template.domain.model.Product;
-import com.yowyob.template.domain.ports.in.CreateProductUseCase;
+import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.request.CreatePlanningRequest;
+import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.request.UpdatePlanningRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.core.OAuth2AuthenticatedPrincipal;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import io.swagger.v3.oas.annotations.Parameter;
 
-import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -4609,39 +5389,62 @@ import java.util.UUID;
 @RequiredArgsConstructor
 @Tag(name = "Driver Planning", description = "Gestion des plannings (Produits) pour les Chauffeurs")
 public class DriverPlanningController {
-    private final CreateProductUseCase productService;
+    
+    private final DriverPlanningService planningService;
+    // Garde le ProductService pour les opérations génériques GET/DELETE si besoin
+    private final com.yowyob.template.application.service.ProductService productService;
 
     @PostMapping
-    @Operation(summary = "Créer un planning", description = "Crée un nouveau créneau ou produit de transport pour l'organisation du chauffeur.")
-    public Mono<Product> createPlanning(@RequestParam UUID organisationId, @RequestBody Map<String, Object> params) {
-        return productService.createProductForOrganisation(organisationId, params);
+    @Operation(summary = "Créer un planning", description = "Crée un nouveau créneau de transport pour le chauffeur connecté.")
+    public Mono<Product> createPlanning(
+            @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+            @Parameter(hidden = true) @RequestHeader(name = "Authorization") String token,
+            @Valid @RequestBody CreatePlanningRequest request
+    ) {
+        UUID authUserId = UUID.fromString(principal.getAttribute("sub"));
+        return planningService.createDriverPlanning(authUserId, request, token);
     }
 
     @GetMapping
-    @Operation(summary = "Lister les plannings", description = "Récupère tous les plannings disponibles (filtrage à implémenter).")
-    public Flux<Product> getAllPlannings() {
-        return productService.getAllProducts();
+    public Flux<Product> listPlannings(
+            @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+            @Parameter(hidden = true) @RequestHeader(name = "Authorization") String token
+    ) {
+        UUID authUserId = UUID.fromString(principal.getAttribute("sub"));
+        return planningService.listDriverPlannings(authUserId, token);
     }
 
     @GetMapping("/{id}")
-    @Operation(summary = "Obtenir un planning", description = "Récupère les détails d'un planning spécifique par ID.")
-    public Mono<Product> getPlanning(@PathVariable UUID id) {
-        return productService.getProductById(id);
+    public Mono<Product> getPlanning(
+            @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+            @Parameter(hidden = true) @RequestHeader(name = "Authorization") String token,
+            @PathVariable UUID id
+    ) {
+        UUID authUserId = UUID.fromString(principal.getAttribute("sub"));
+        return planningService.getDriverPlanning(authUserId, id, token);
     }
 
     @PutMapping("/{id}")
-    @Operation(summary = "Mettre à jour un planning", description = "Modifie les informations d'un planning existant.")
-    public Mono<Product> updatePlanning(@PathVariable UUID id, @RequestBody Product product) {
-        return productService.updateProduct(id, product);
+    public Mono<Product> updatePlanning(
+            @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+            @Parameter(hidden = true) @RequestHeader(name = "Authorization") String token,
+            @PathVariable UUID id,
+            @Valid @RequestBody UpdatePlanningRequest request
+    ) {
+        UUID authUserId = UUID.fromString(principal.getAttribute("sub"));
+        return planningService.updateDriverPlanning(authUserId, id, request, token);
     }
 
     @DeleteMapping("/{id}")
-    @Operation(summary = "Supprimer un planning", description = "Supprime un planning du système.")
-    public Mono<Void> deletePlanning(@PathVariable UUID id) {
-        return productService.deleteProduct(id);
+    public Mono<Void> deletePlanning(
+            @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+            @Parameter(hidden = true) @RequestHeader(name = "Authorization") String token,
+            @PathVariable UUID id
+    ) {
+        UUID authUserId = UUID.fromString(principal.getAttribute("sub"));
+        return planningService.deleteDriverPlanning(authUserId, id, token);
     }
-}
-// END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/DriverPlanningController.java
+}// END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/DriverPlanningController.java
 
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/DriverProfileController.java
 
@@ -4653,6 +5456,7 @@ import com.yowyob.template.domain.model.Contact;
 import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.*;
 import com.yowyob.template.application.service.DriverProfileService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -4674,26 +5478,59 @@ public class DriverProfileController {
 
     @GetMapping
     @Operation(summary = "Obtenir le profil", description = "Récupère les informations du profil Chauffeur (Authentifié).")
-    public Mono<UserProfileResponse> getProfile(@AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal) {
+    public Mono<UserProfileResponse> getProfile(@AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+                                                @Parameter(hidden = true) @RequestHeader(name = "Authorization") String authHeader) {
         if (principal == null) {
             return Mono.error(new RuntimeException("Unauthorized"));
         }
-        // TODO: Implement actual profile retrieval using service
+        
         String sub = principal.getAttribute("sub");
-        return Mono.empty(); 
+        UUID userId = UUID.fromString(sub);
+
+        return service.getProfile(userId, authHeader)
+                .map(profile -> UserProfileResponse.builder()
+                        .user(profile.getUser())
+                        .actor(profile.getActor())
+                        .organisation(profile.getOrganisation())
+                        .build());
     }
 
-    @PutMapping("/address")
-    @Operation(summary = "Mettre à jour l'adresse", description = "Modifie l'adresse du Chauffeur.")
-    public Mono<AddressResponse> updateAddress(@RequestBody AddressRequest request) {
-         // Placeholder for integration
-         return Mono.empty();
+    @PutMapping("/addresses/{id}")
+    @Operation(summary = "Mettre à jour une adresse", description = "Modifie une adresse du Chauffeur.")
+    public Mono<AddressResponse> updateAddress(@AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+                                               @Parameter(hidden = true) @RequestHeader(name = "Authorization") String authHeader,
+                                               @PathVariable UUID id,
+                                               @RequestBody AddressRequest request) {
+        String sub = principal.getAttribute("sub");
+        UUID userId = UUID.fromString(sub);
+
+        Address address = Address.builder()
+                .id(id)
+                .type(request.type())
+                .addressLine1(request.addressLine1())
+                .addressLine2(request.addressLine2())
+                .city(request.city())
+                .state(request.state())
+                .locality(request.locality())
+                .zipCode(request.zipCode())
+                .postalCode(request.postalCode())
+                .poBox(request.poBox())
+                .isDefault(request.isDefault())
+                .neighborhood(request.neighborhood())
+                .informalDescription(request.informalDescription())
+                .latitude(request.latitude())
+                .longitude(request.longitude())
+                .build();
+
+        return service.updateAddress(userId, address, authHeader)
+                .map(this::mapToAddressResponse);
+
     }
     
-    @PostMapping("/contact")
+    @PostMapping("/contacts")
     @Operation(summary = "Ajouter un contact", description = "Ajoute un contact à l'organisation du Chauffeur.")
     public Mono<ContactResponse> addContact(@AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal, 
-                                            @RequestHeader(name = "Authorization", required = false) String authHeader,
+                                            @Parameter(hidden = true) @RequestHeader(name = "Authorization", required = false) String authHeader,
                                             @RequestBody ContactRequest request) {
         String sub = principal.getAttribute("sub");
         UUID userId = UUID.fromString(sub);
@@ -4716,16 +5553,105 @@ public class DriverProfileController {
          return service.addContact(userId, contact, authHeader)
                 .map(this::mapToContactResponse);
     }
+    
+    @PutMapping("/contacts/{id}")
+    @Operation(summary = "Mettre à jour un contact", description = "Modifie un contact existant de l'organisation du Chauffeur.")
+    public Mono<ContactResponse> updateContact(@AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal, 
+                                            @Parameter(hidden = true) @RequestHeader(name = "Authorization", required = false) String authHeader,
+                                            @PathVariable UUID id,
+                                            @RequestBody ContactRequest request) {
+        String sub = principal.getAttribute("sub");
+        UUID userId = UUID.fromString(sub);
+
+        Contact contact = Contact.builder()
+                .id(id)
+                .contactableType(request.contactableType())
+                .firstName(request.firstName())
+                .lastName(request.lastName())
+                .title(request.title())
+                .isEmailVerified(request.isEmailVerified())
+                .isPhoneNumberVerified(request.isPhoneNumberVerified())
+                .isFavorite(request.isFavorite())
+                .phoneNumber(request.phoneNumber())
+                .secondaryPhoneNumber(request.secondaryPhoneNumber())
+                .faxNumber(request.faxNumber())
+                .email(request.email())
+                .secondaryEmail(request.secondaryEmail())
+                .build();
+
+         return service.updateContact(userId, contact, authHeader)
+                .map(this::mapToContactResponse);
+    }
 
     @GetMapping("/contacts")
     @Operation(summary = "Lister les contacts", description = "Récupère les contacts de l'organisation du Chauffeur.")
     public Flux<ContactResponse> getContacts(@AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
-                                             @RequestHeader(name = "Authorization", required = false) String authHeader) {
+                                             @Parameter(hidden = true) @RequestHeader(name = "Authorization", required = false) String authHeader) {
         String sub = principal.getAttribute("sub");
         UUID userId = UUID.fromString(sub);
         
         return service.getContacts(userId, authHeader)
                 .map(this::mapToContactResponse);
+    }
+
+    @DeleteMapping("/contacts/{id}")
+    @Operation(summary = "Supprimer un contact", description = "Supprime un contact du profil chauffeur.")
+    public Mono<Void> deleteContact(@AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+                                    @Parameter(hidden = true) @RequestHeader(name = "Authorization") String authHeader,
+                                    @PathVariable UUID id) {
+        String sub = principal.getAttribute("sub");
+        UUID userId = UUID.fromString(sub);
+        return service.deleteContact(userId, id, authHeader);
+    }
+
+    @GetMapping("/addresses")
+    @Operation(summary = "Lister les adresses", description = "Récupère les adresses du chauffeur.")
+    public Flux<AddressResponse> getAddresses(@AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+                                              @Parameter(hidden = true) @RequestHeader(name = "Authorization") String authHeader) {
+        String sub = principal.getAttribute("sub");
+        UUID userId = UUID.fromString(sub);
+        return service.getAddresses(userId, authHeader)
+                .map(this::mapToAddressResponse);
+    }
+
+    @PostMapping("/addresses")
+    @Operation(summary = "Ajouter une adresse", description = "Ajoute une adresse au profil chauffeur.")
+    public Mono<AddressResponse> addAddress(@AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+                                            @Parameter(hidden = true) @RequestHeader(name = "Authorization") String authHeader,
+                                            @RequestBody AddressRequest request) {
+        String sub = principal.getAttribute("sub");
+        UUID userId = UUID.fromString(sub);
+
+        Address address = Address.builder()
+                .addressableType(request.addressableType())
+                .type(request.type())
+                .addressLine1(request.addressLine1())
+                .addressLine2(request.addressLine2())
+                .city(request.city())
+                .state(request.state())
+                .locality(request.locality())
+                .zipCode(request.zipCode())
+                .postalCode(request.postalCode())
+                .poBox(request.poBox())
+                .isDefault(request.isDefault())
+                .neighborhood(request.neighborhood())
+                .informalDescription(request.informalDescription())
+                .latitude(request.latitude())
+                .longitude(request.longitude())
+                .build();
+                
+        return service.addAddress(userId, address, authHeader)
+                .map(this::mapToAddressResponse);
+    }
+
+    @DeleteMapping("/addresses/{id}")
+    @Operation(summary = "Supprimer une adresse", description = "Supprime une adresse du profil chauffeur.")
+    public Mono<Void> deleteAddress(@AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+                                    @Parameter(hidden = true) @RequestHeader(name = "Authorization") String authHeader,
+                                    @PathVariable UUID id) {
+        String sub = principal.getAttribute("sub");
+        UUID userId = UUID.fromString(sub);
+        return service.deleteAddress(userId, id, authHeader);
     }
 
     @PostMapping("/certification-request")
@@ -4744,6 +5670,29 @@ public class DriverProfileController {
             ));
     }
 
+    private AddressResponse mapToAddressResponse(Address address) {
+        return new AddressResponse(
+                address.getId(),
+                address.getAddressableType(),
+                address.getType(),
+                address.getAddressLine1(),
+                address.getAddressLine2(),
+                address.getCity(),
+                address.getState(),
+                address.getLocality(),
+                address.getZipCode(),
+                address.getPostalCode(),
+                address.getPoBox(),
+                address.getIsDefault(),
+                address.getNeighborhood(),
+                address.getInformalDescription(),
+                address.getLatitude(),
+                address.getLongitude(),
+                null, // CreatedAt
+                null, // UpdatedAt
+                null // DeletedAt
+        );
+    }
     private ContactResponse mapToContactResponse(Contact contact) {
         return new ContactResponse(
                 contact.getId(),
@@ -4962,6 +5911,54 @@ public record ContactResponse(
     Timestamp updatedAt,
     Timestamp deletedAt
 ) {}// END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/dto/ContactResponse.java
+
+//---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/dto/CreateAnnonceRequest.java
+
+// END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/dto/CreateAnnonceRequest.java
+
+//---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/dto/CreatePlanningRequest.java
+
+package com.yowyob.template.infrastructure.adapters.inbound.rest.dto.request;
+
+import com.yowyob.template.domain.model.TripType;
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.Future;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+
+import java.time.LocalTime;
+import java.time.OffsetDateTime;
+import java.util.List;
+
+public record CreatePlanningRequest(
+        @NotBlank String title,
+        @NotBlank String departureLocation,
+        @NotBlank String dropoffLocation,
+        @NotNull @Future
+        @Schema(type = "string", format = "date-time", example = "2026-01-28T16:30:00Z")
+        OffsetDateTime startDate,
+        @NotNull
+        @Schema(type = "string", pattern = "^\\d{2}:\\d{2}(:\\d{2})?$", example = "12:21:23")
+        LocalTime startTime,
+
+        @Schema(type = "string", format = "date-time", example = "2026-01-28T18:30:00Z")
+        OffsetDateTime endDate,
+        @Schema(type = "string", pattern = "^\\d{2}:\\d{2}(:\\d{2})?$", example = "18:30:00")
+        LocalTime endTime,
+
+        // Nouveaux champs
+        TripType tripType,
+        String meetupPoint,
+        String tripIntention,
+        String pricingMethod,
+
+        // Champs optionnels
+        Boolean isNegotiable,
+        String paymentOption,
+        String regularAmount,
+        String discountPercentage,
+        String discountedAmount
+) {}// END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/dto/CreatePlanningRequest.java
 
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/dto/FullOnboardingRequest.java
 
@@ -5231,6 +6228,132 @@ public class ReactionResponse {
 }
 // END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/dto/ReactionResponse.java
 
+//---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/dto/request/CreateAnnonceRequest.java
+
+package com.yowyob.template.infrastructure.adapters.inbound.rest.dto.request;
+
+import com.yowyob.template.domain.model.TripType;
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.Future;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+
+import java.time.LocalTime;
+import java.time.OffsetDateTime;
+
+public record CreateAnnonceRequest(
+        @NotBlank String title,
+        @NotBlank String departureLocation,
+        @NotBlank String dropoffLocation,
+        @NotNull @Future
+        @Schema(type = "string", format = "date-time", example = "2026-01-28T16:30:00Z")
+        OffsetDateTime startDate,
+        @NotNull
+        @Schema(type = "string", pattern = "^\\d{2}:\\d{2}(:\\d{2})?$", example = "12:21:23")
+        LocalTime startTime,
+        @Schema(type = "string", format = "date-time", example = "2026-01-28T18:30:00Z")
+        OffsetDateTime endDate,
+        @Schema(type = "string", pattern = "^\\d{2}:\\d{2}(:\\d{2})?$", example = "18:30:00")
+        LocalTime endTime,
+        
+        @NotBlank String cost,
+
+        // Nouveaux champs
+        TripType tripType,
+        String meetupPoint,
+        String tripIntention,
+        String pricingMethod,
+
+        // Champs optionnels
+        String baggageInfo,
+        Boolean isNegotiable,
+        String paymentMethod
+) {}
+// END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/dto/request/CreateAnnonceRequest.java
+
+//---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/dto/request/UpdateAnnonceRequest.java
+
+package com.yowyob.template.infrastructure.adapters.inbound.rest.dto.request;
+
+import com.yowyob.template.domain.model.TripType;
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.Future;
+
+import java.time.LocalTime;
+import java.time.OffsetDateTime;
+import java.util.UUID;
+
+public record UpdateAnnonceRequest(
+        String title,
+        String departureLocation,
+        String dropoffLocation,
+        @Future
+        @Schema(type = "string", format = "date-time", example = "2026-01-28T16:30:00Z")
+        OffsetDateTime startDate,
+        @Schema(type = "string", pattern = "^\\d{2}:\\d{2}(:\\d{2})?$", example = "12:21:23")
+        LocalTime startTime,
+        @Future
+        @Schema(type = "string", format = "date-time", example = "2026-01-28T18:30:00Z")
+        OffsetDateTime endDate,
+        @Schema(type = "string", pattern = "^\\d{2}:\\d{2}(:\\d{2})?$", example = "18:30:00")
+        LocalTime endTime,
+        String status,
+        UUID reservedById,
+        TripType tripType,
+        String meetupPoint,
+        String tripIntention,
+        String pricingMethod,
+        Boolean isNegotiable,
+        String paymentMethod,
+        String cost,
+        String baggageInfo
+) {}
+// END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/dto/request/UpdateAnnonceRequest.java
+
+//---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/dto/request/UpdatePlanningRequest.java
+
+package com.yowyob.template.infrastructure.adapters.inbound.rest.dto.request;
+
+import com.yowyob.template.domain.model.TripType;
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.Future;
+
+import java.time.LocalTime;
+import java.time.OffsetDateTime;
+import java.util.UUID;
+
+public record UpdatePlanningRequest(
+        String title,
+        String departureLocation,
+        String dropoffLocation,
+        @Future
+        @Schema(type = "string", format = "date-time", example = "2026-01-28T16:30:00Z")
+        OffsetDateTime startDate,
+        @Schema(type = "string", pattern = "^\\d{2}:\\d{2}(:\\d{2})?$", example = "12:21:23")
+        LocalTime startTime,
+
+        @Future
+        @Schema(type = "string", format = "date-time", example = "2026-01-28T18:30:00Z")
+        OffsetDateTime endDate,
+        @Schema(type = "string", pattern = "^\\d{2}:\\d{2}(:\\d{2})?$", example = "18:30:00")
+        LocalTime endTime,
+
+        String status,
+        UUID reservedById,
+
+        TripType tripType,
+        String meetupPoint,
+        String tripIntention,
+        String pricingMethod,
+
+        Boolean isNegotiable,
+        String paymentOption,
+        String regularAmount,
+        String discountPercentage,
+        String discountedAmount
+) {}
+// END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/dto/request/UpdatePlanningRequest.java
+
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/dto/ReviewRequest.java
 
 package com.yowyob.template.infrastructure.adapters.inbound.rest.dto;
@@ -5340,8 +6463,6 @@ import jakarta.validation.constraints.NotNull;
 import java.util.UUID;
 
 public record SettingsRequest(
-
-        @NotBlank String userId,
         String theme,
         String language,
         Boolean longRideEnabled,
@@ -5445,10 +6566,15 @@ import com.yowyob.template.domain.exception.BadCredentialsException;
 import com.yowyob.template.domain.exception.StockFullException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.web.bind.support.WebExchangeBindException;
+import org.springframework.web.server.ServerWebInputException;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.net.URI;
+import java.util.HashMap;
+import java.util.Map;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -5467,6 +6593,40 @@ public class GlobalExceptionHandler {
         problem.setType(URI.create("errors/stock-full"));
         return problem;
     }
+
+    @ExceptionHandler(WebExchangeBindException.class)
+    public ProblemDetail handleValidationException(WebExchangeBindException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Validation failed");
+        problem.setTitle("Bad Request");
+        problem.setType(URI.create("errors/validation"));
+
+        Map<String, String> errors = new HashMap<>();
+        ex.getFieldErrors().forEach(err -> errors.put(err.getField(), err.getDefaultMessage()));
+        problem.setProperty("errors", errors);
+        return problem;
+    }
+
+    @ExceptionHandler(ServerWebInputException.class)
+    public ProblemDetail handleServerWebInputException(ServerWebInputException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getReason() != null ? ex.getReason() : "Invalid request");
+        problem.setTitle("Bad Request");
+        problem.setType(URI.create("errors/invalid-request"));
+        return problem;
+    }
+
+    @ExceptionHandler(WebClientResponseException.class)
+    public ProblemDetail handleWebClientResponseException(WebClientResponseException ex) {
+        HttpStatus status = HttpStatus.resolve(ex.getStatusCode().value());
+        if (status == null) {
+            status = HttpStatus.INTERNAL_SERVER_ERROR;
+        }
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, "Upstream service error");
+        problem.setTitle(status.getReasonPhrase());
+        problem.setType(URI.create("errors/upstream"));
+        problem.setProperty("upstreamStatus", ex.getStatusCode().value());
+        problem.setProperty("upstreamBody", ex.getResponseBodyAsString());
+        return problem;
+    }
 }// END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/GlobalExceptionHandler.java
 
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/OnboardingController.java
@@ -5480,8 +6640,11 @@ import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.UserProfileR
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.core.OAuth2AuthenticatedPrincipal;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
+import io.swagger.v3.oas.annotations.Parameter;
 
 import java.util.UUID;
 
@@ -5500,18 +6663,24 @@ public class OnboardingController {
 
     @PostMapping("/become-driver")
     @Operation(summary = "Devenir Chauffeur", description = "Permet à un utilisateur existant de créer un profil Chauffeur et une organisation associée.")
-    public Mono<UserProfileResponse> becomeDriver(@RequestParam UUID userId, 
-                                                  @RequestBody NewRoleRequest request, 
-                                                  @RequestHeader("Authorization") String authHeader) {
+    public Mono<UserProfileResponse> becomeDriver(
+            @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+            @Parameter(hidden = true) @RequestHeader(name = "Authorization") String authHeader,
+            @RequestBody NewRoleRequest request
+    ) {
+        UUID userId = UUID.fromString(principal.getAttribute("sub"));
         String token = authHeader.startsWith("Bearer ") ? authHeader.substring(7) : authHeader;
         return onboardingService.becomeDriver(userId, request, token);
     }
 
     @PostMapping("/become-client")
     @Operation(summary = "Devenir Client", description = "Permet à un utilisateur existant de créer un profil Client et une organisation associée.")
-    public Mono<UserProfileResponse> becomeClient(@RequestParam UUID userId, 
-                                                  @RequestBody NewRoleRequest request, 
-                                                  @RequestHeader("Authorization") String authHeader) {
+    public Mono<UserProfileResponse> becomeClient(
+            @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+            @Parameter(hidden = true) @RequestHeader(name = "Authorization") String authHeader,
+            @RequestBody NewRoleRequest request
+    ) {
+        UUID userId = UUID.fromString(principal.getAttribute("sub"));
         String token = authHeader.startsWith("Bearer ") ? authHeader.substring(7) : authHeader;
         return onboardingService.becomeClient(userId, request, token);
     }
@@ -5535,6 +6704,10 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import java.util.UUID;
@@ -5554,8 +6727,13 @@ public class SettingsController {
         @ApiResponse(responseCode = "201", description = "Paramètres créés avec succès"),
         @ApiResponse(responseCode = "400", description = "Données invalides")
     })
-    public Mono<SettingsResponse> create(@RequestBody @Valid SettingsRequest request) {
+    public Mono<SettingsResponse> create(@RequestHeader(name = "Authorization", required = false) String authHeader,
+                                         @RequestBody @Valid SettingsRequest request) {
         Settings settings = mapper.toDomain(request);
+        String sub = extractSubFromAuthHeader(authHeader);
+        if (sub != null) {
+            settings.setUserId(sub);
+        }
         return useCase.createSettings(settings)
                 .map(mapper::toResponse);
     }
@@ -5585,10 +6763,32 @@ public class SettingsController {
         @ApiResponse(responseCode = "200", description = "Paramètres mis à jour"),
         @ApiResponse(responseCode = "404", description = "Paramètres non trouvés")
     })
-    public Mono<SettingsResponse> update(@PathVariable UUID id, @RequestBody @Valid SettingsRequest request) {
+    public Mono<SettingsResponse> update(@RequestHeader(name = "Authorization", required = false) String authHeader,
+                                         @PathVariable UUID id, @RequestBody @Valid SettingsRequest request) {
         Settings settings = mapper.toDomain(request);
+        String sub = extractSubFromAuthHeader(authHeader);
+        if (sub != null) {
+            settings.setUserId(sub);
+        }
         return useCase.updateSettings(id, settings)
                 .map(mapper::toResponse);
+    }
+
+    private String extractSubFromAuthHeader(String authHeader) {
+        if (authHeader == null) return null;
+        String token = authHeader.startsWith("Bearer ") ? authHeader.substring(7) : authHeader;
+        String[] parts = token.split("\\.");
+        if (parts.length < 2) return null;
+        try {
+            byte[] decoded = Base64.getUrlDecoder().decode(parts[1]);
+            String payload = new String(decoded, StandardCharsets.UTF_8);
+            ObjectMapper mapperObj = new ObjectMapper();
+            JsonNode node = mapperObj.readTree(payload);
+            if (node.has("sub")) return node.get("sub").asText();
+        } catch (Exception e) {
+            // ignore and return null
+        }
+        return null;
     }
 
     @DeleteMapping("/{id}")
@@ -5793,6 +6993,20 @@ public class AddressExternalAdapter implements AddressRepositoryPort {
         return webClientBuilder.baseUrl(orgServiceUrl).build();
     }
 
+     private String toAuthorizationHeaderValue(String jwtToken) {
+         if (jwtToken == null) {
+             return null;
+         }
+         String token = jwtToken.trim();
+         if (token.isEmpty()) {
+             return null;
+         }
+         if (token.regionMatches(true, 0, "Bearer ", 0, "Bearer ".length())) {
+             return token;
+         }
+         return "Bearer " + token;
+     }
+
     @Override
     public Mono<Address> save(Address address) {
         return save(address, null);
@@ -5822,8 +7036,45 @@ public class AddressExternalAdapter implements AddressRepositoryPort {
         var requestSpec = getClient().post()
                 .uri("/api/v1/addresses");
 
-        if (jwtToken != null && !jwtToken.isEmpty()) {
-            requestSpec.header("Authorization", "Bearer " + jwtToken);
+        String authHeader = toAuthorizationHeaderValue(jwtToken);
+        if (authHeader != null) {
+            requestSpec.header("Authorization", authHeader);
+        }
+
+        return requestSpec
+                .bodyValue(request)
+                .retrieve()
+                .bodyToMono(ExternalAddressResponse.class)
+                .map(this::mapToDomain);
+    }
+
+    @Override
+    public Mono<Address> update(Address address, String jwtToken) {
+        ExternalAddressRequest request = new ExternalAddressRequest(
+            address.getAddressableId(),
+            address.getAddressableType(),
+            address.getType(),
+            address.getAddressLine1(),
+            address.getAddressLine2(),
+            address.getCity(),
+            address.getState(),
+            address.getLocality(),
+            address.getZipCode(),
+            null, // countryId
+            address.getPoBox(),
+            address.getNeighborhood(),
+            address.getInformalDescription(),
+            address.getIsDefault(),
+            address.getLatitude() != null ? address.getLatitude() : 0.0,
+            address.getLongitude() != null ? address.getLongitude() : 0.0
+        );
+
+        var requestSpec = getClient().put()
+                .uri("/api/v1/addresses/{id}", address.getId());
+
+        String authHeader = toAuthorizationHeaderValue(jwtToken);
+        if (authHeader != null) {
+            requestSpec.header("Authorization", authHeader);
         }
 
         return requestSpec
@@ -5844,9 +7095,39 @@ public class AddressExternalAdapter implements AddressRepositoryPort {
     }
 
     @Override
+    public Flux<Address> findAllByAddressableId(UUID addressableId, String jwtToken) {
+        var requestSpec = getClient().get()
+                .uri(uriBuilder -> uriBuilder.path("/api/v1/addresses")
+                        .queryParam("addressableId", addressableId)
+                        .build());
+                        
+        String authHeader = toAuthorizationHeaderValue(jwtToken);
+        if (authHeader != null) {
+            requestSpec.header("Authorization", authHeader);
+        }
+
+        return requestSpec
+                .retrieve()
+                .bodyToFlux(ExternalAddressResponse.class)
+                .map(this::mapToDomain);
+    }
+
+    @Override
     public Mono<Void> deleteById(UUID id) {
-        return getClient().delete()
-                .uri("/api/v1/addresses/{id}", id)
+        return deleteById(id, null);
+    }
+
+    @Override
+    public Mono<Void> deleteById(UUID id, String jwtToken) {
+        var requestSpec = getClient().delete()
+                .uri("/api/v1/addresses/{id}", id);
+
+        String authHeader = toAuthorizationHeaderValue(jwtToken);
+        if (authHeader != null) {
+            requestSpec.header("Authorization", authHeader);
+        }
+        
+        return requestSpec
                 .retrieve()
                 .bodyToMono(Void.class);
     }
@@ -5967,6 +7248,20 @@ public class BusinessActorExternalAdapter implements BusinessActorRepositoryPort
         return webClientBuilder.baseUrl(orgServiceUrl).build();
     }
 
+     private String toAuthorizationHeaderValue(String jwtToken) {
+         if (jwtToken == null) {
+             return null;
+         }
+         String token = jwtToken.trim();
+         if (token.isEmpty()) {
+             return null;
+         }
+         if (token.regionMatches(true, 0, "Bearer ", 0, "Bearer ".length())) {
+             return token;
+         }
+         return "Bearer " + token;
+     }
+
     @Override
     public Mono<BusinessActor> save(BusinessActor businessActor) {
         return save(businessActor, null);
@@ -5978,8 +7273,9 @@ public class BusinessActorExternalAdapter implements BusinessActorRepositoryPort
         var requestSpec = getClient().post()
                 .uri("/api/v1/business-actors");
         
-        if (jwtToken != null && !jwtToken.isEmpty()) {
-            requestSpec.header("Authorization", "Bearer " + jwtToken);
+        String authHeader = toAuthorizationHeaderValue(jwtToken);
+        if (authHeader != null) {
+            requestSpec.header("Authorization", authHeader);
         }
 
         return requestSpec
@@ -6006,18 +7302,18 @@ public class BusinessActorExternalAdapter implements BusinessActorRepositoryPort
     @Override
     public Mono<BusinessActor> findByUserId(UUID userId, String jwtToken) {
         var requestSpec = getClient().get()
-                .uri(uriBuilder -> uriBuilder.path("/api/v1/business-actors")
-                        .queryParam("authUserId", userId)
-                        .build());
-                        
-        if (jwtToken != null && !jwtToken.isEmpty()) {
-            requestSpec.header("Authorization", "Bearer " + jwtToken);
+                .uri("/api/v1/business-actors");
+
+        String authHeader = toAuthorizationHeaderValue(jwtToken);
+        if (authHeader != null) {
+            requestSpec.header("Authorization", authHeader);
         }
 
         return requestSpec
                 .retrieve()
                 .bodyToFlux(ExternalBusinessActorResponse.class)
-                .next() // Get first match
+                .filter(actor -> userId != null && userId.equals(actor.authUserId()))
+                .next()
                 .map(this::mapToDomain);
     }
 
@@ -6213,6 +7509,20 @@ public class ContactExternalAdapter implements ContactRepositoryPort {
         return webClientBuilder.baseUrl(orgServiceUrl).build();
     }
 
+     private String toAuthorizationHeaderValue(String jwtToken) {
+         if (jwtToken == null) {
+             return null;
+         }
+         String token = jwtToken.trim();
+         if (token.isEmpty()) {
+             return null;
+         }
+         if (token.regionMatches(true, 0, "Bearer ", 0, "Bearer ".length())) {
+             return token;
+         }
+         return "Bearer " + token;
+     }
+
     @Override
     public Mono<Contact> save(Contact contact) {
         return save(contact, null);
@@ -6230,15 +7540,51 @@ public class ContactExternalAdapter implements ContactRepositoryPort {
             contact.getPhoneNumber(),
             contact.getSecondaryPhoneNumber(),
             contact.getFaxNumber(),
-            null, // secondaryEmail missing in domain?
-            contact.getIsFavorite()
+            contact.getSecondaryEmail(),
+            contact.getIsFavorite(),
+            contact.getIsEmailVerified(),
+            contact.getIsPhoneNumberVerified()
         );
 
         var requestSpec = getClient().post()
                 .uri("/api/v1/contacts");
 
-        if (jwtToken != null && !jwtToken.isEmpty()) {
-            requestSpec.header("Authorization", "Bearer " + jwtToken);
+        String authHeader = toAuthorizationHeaderValue(jwtToken);
+        if (authHeader != null) {
+            requestSpec.header("Authorization", authHeader);
+        }
+
+        return requestSpec
+                .bodyValue(request)
+                .retrieve()
+                .bodyToMono(ExternalContactResponse.class)
+                .map(this::mapToDomain);
+    }
+
+    @Override
+    public Mono<Contact> update(Contact contact, String jwtToken) {
+        ExternalContactRequest request = new ExternalContactRequest(
+            contact.getContactableId(),
+            contact.getContactableType(),
+            contact.getTitle(),
+            contact.getFirstName(),
+            contact.getLastName(),
+            contact.getEmail(),
+            contact.getPhoneNumber(),
+            contact.getSecondaryPhoneNumber(),
+            contact.getFaxNumber(),
+            contact.getSecondaryEmail(),
+            contact.getIsFavorite(),
+            contact.getIsEmailVerified(),
+            contact.getIsPhoneNumberVerified()
+        );
+
+        var requestSpec = getClient().put()
+                .uri("/api/v1/contacts/{id}", contact.getId());
+
+        String authHeader = toAuthorizationHeaderValue(jwtToken);
+        if (authHeader != null) {
+            requestSpec.header("Authorization", authHeader);
         }
 
         return requestSpec
@@ -6271,8 +7617,9 @@ public class ContactExternalAdapter implements ContactRepositoryPort {
                         .queryParam("contactableId", contactableId)
                         .build());
 
-        if (jwtToken != null && !jwtToken.isEmpty()) {
-            requestSpec.header("Authorization", "Bearer " + jwtToken);
+        String authHeader = toAuthorizationHeaderValue(jwtToken);
+        if (authHeader != null) {
+            requestSpec.header("Authorization", authHeader);
         }
 
         return requestSpec
@@ -6283,8 +7630,20 @@ public class ContactExternalAdapter implements ContactRepositoryPort {
 
     @Override
     public Mono<Void> deleteById(UUID id) {
-        return getClient().delete()
-                .uri("/api/v1/contacts/{id}", id)
+        return deleteById(id, null);
+    }
+
+    @Override
+    public Mono<Void> deleteById(UUID id, String jwtToken) {
+        var requestSpec = getClient().delete()
+                .uri("/api/v1/contacts/{id}", id);
+
+        String authHeader = toAuthorizationHeaderValue(jwtToken);
+        if (authHeader != null) {
+            requestSpec.header("Authorization", authHeader);
+        }
+
+        return requestSpec
                 .retrieve()
                 .bodyToMono(Void.class);
     }
@@ -6298,13 +7657,19 @@ public class ContactExternalAdapter implements ContactRepositoryPort {
         return Contact.builder()
                 .id(response.id())
                 .contactableId(response.contactableId())
-                .contactableType("ORGANIZATION") // Assumed
+                .contactableType(response.contactableType())
                 .firstName(response.firstName())
                 .lastName(response.lastName())
                 .email(response.email())
                 .phoneNumber(response.phoneNumber())
+                .secondaryPhoneNumber(response.secondaryPhoneNumber())
+                .faxNumber(response.faxNumber())
+                .secondaryEmail(response.secondaryEmail())
                 .title(response.title())
                 .isFavorite(response.isFavorite())
+                .isEmailVerified(response.isEmailVerified())
+                .isPhoneNumberVerified(response.isPhoneNumberVerified())
+                .createdAt(response.createdAt() != null ? java.sql.Timestamp.valueOf(response.createdAt()) : null)
                 .build();
     }
 }
@@ -6495,7 +7860,9 @@ public record ExternalContactRequest(
     String secondaryPhoneNumber,
     String faxNumber,
     String secondaryEmail,
-    Boolean isFavorite
+    Boolean isFavorite,
+    Boolean isEmailVerified,
+    Boolean isPhoneNumberVerified
 ) {}
 // END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/outbound/external/dto/organization/ExternalContactRequest.java
 
@@ -6516,6 +7883,8 @@ public record ExternalContactResponse(
     String email,
     String phoneNumber,
     String secondaryPhoneNumber,
+    String faxNumber,
+    String secondaryEmail,
     Boolean isFavorite,
     Boolean isEmailVerified,
     Boolean isPhoneNumberVerified,
@@ -6682,6 +8051,20 @@ public class OrganisationExternalAdapter implements OrganisationRepositoryPort {
         return webClientBuilder.baseUrl(orgServiceUrl).build();
     }
 
+     private String toAuthorizationHeaderValue(String jwtToken) {
+         if (jwtToken == null) {
+             return null;
+         }
+         String token = jwtToken.trim();
+         if (token.isEmpty()) {
+             return null;
+         }
+         if (token.regionMatches(true, 0, "Bearer ", 0, "Bearer ".length())) {
+             return token;
+         }
+         return "Bearer " + token;
+     }
+
     @Override
     public Mono<Organisation> save(Organisation organisation) {
         return save(organisation, null);
@@ -6693,8 +8076,9 @@ public class OrganisationExternalAdapter implements OrganisationRepositoryPort {
         var requestSpec = getClient().post()
                 .uri("/api/v1/organizations");
 
-        if (jwtToken != null && !jwtToken.isEmpty()) {
-            requestSpec.header("Authorization", "Bearer " + jwtToken);
+        String authHeader = toAuthorizationHeaderValue(jwtToken);
+        if (authHeader != null) {
+            requestSpec.header("Authorization", authHeader);
         }
 
         return requestSpec
@@ -6706,8 +8090,20 @@ public class OrganisationExternalAdapter implements OrganisationRepositoryPort {
 
     @Override
     public Mono<Organisation> findById(UUID id) {
-        Mono<ExternalOrganizationResponse> orgMono = getClient().get()
-                .uri("/api/v1/organizations/{id}", id)
+        return findById(id, null);
+    }
+
+    @Override
+    public Mono<Organisation> findById(UUID id, String jwtToken) {
+        var requestSpec = getClient().get()
+                .uri("/api/v1/organizations/{id}", id);
+
+        String authHeader = toAuthorizationHeaderValue(jwtToken);
+        if (authHeader != null) {
+            requestSpec.header("Authorization", authHeader);
+        }
+
+        Mono<ExternalOrganizationResponse> orgMono = requestSpec
                 .retrieve()
                 .bodyToMono(ExternalOrganizationResponse.class);
         return enrichOrganisation(orgMono);
@@ -6725,8 +8121,9 @@ public class OrganisationExternalAdapter implements OrganisationRepositoryPort {
                         .queryParam("actorId", actorId)
                         .build());
                         
-        if (jwtToken != null && !jwtToken.isEmpty()) {
-            requestSpec.header("Authorization", "Bearer " + jwtToken);
+        String authHeader = toAuthorizationHeaderValue(jwtToken);
+        if (authHeader != null) {
+            requestSpec.header("Authorization", authHeader);
         }
 
         return requestSpec
@@ -6925,11 +8322,37 @@ public class UserExternalAdapter implements UserRepositoryPort {
     @Value("${application.external.auth-service-url}")
     private String authServiceUrl;
 
+     private String toAuthorizationHeaderValue(String jwtToken) {
+         if (jwtToken == null) {
+             return null;
+         }
+         String token = jwtToken.trim();
+         if (token.isEmpty()) {
+             return null;
+         }
+         if (token.regionMatches(true, 0, "Bearer ", 0, "Bearer ".length())) {
+             return token;
+         }
+         return "Bearer " + token;
+     }
+
     @Override
     public Mono<User> findById(UUID id) {
-        return webClientBuilder.baseUrl(authServiceUrl).build()
+        return findById(id, null);
+    }
+
+    @Override
+    public Mono<User> findById(UUID id, String jwtToken) {
+        var requestSpec = webClientBuilder.baseUrl(authServiceUrl).build()
                 .get()
-                .uri("/api/users/{id}", id)
+                .uri("/api/users/{id}", id);
+
+        String authHeader = toAuthorizationHeaderValue(jwtToken);
+        if (authHeader != null) {
+            requestSpec.header("Authorization", authHeader);
+        }
+
+        return requestSpec
                 .retrieve()
                 .bodyToMono(TraMaSysUserResponse.class)
                 .map(this::mapToDomain);
@@ -7095,10 +8518,12 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.relational.core.mapping.Table;
 
 import lombok.AllArgsConstructor;
+import lombok.Data;
 import lombok.NoArgsConstructor;
 
 
 @Table("Address")
+@Data
 @NoArgsConstructor
 @AllArgsConstructor
 public class AddressEntity {
@@ -7247,17 +8672,20 @@ public class OrganizationEntity {
 
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/infrastructure/adapters/outbound/persistence/entity/ProductEntity.java
 
+// CHEMIN: src/main/java/com/yowyob/template/infrastructure/adapters/outbound/persistence/entity/ProductEntity.java
+
 package com.yowyob.template.infrastructure.adapters.outbound.persistence.entity;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import com.yowyob.template.domain.model.ProductStatus;
+import com.yowyob.template.domain.model.TripType;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.relational.core.mapping.Table;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.time.LocalTime;
-import java.sql.Timestamp;
 import java.util.List;
 import java.util.UUID;
 
@@ -7269,40 +8697,44 @@ public class ProductEntity {
     @Id
     private UUID id;
     private UUID organizationId;
-    private String name;
-    private String description;
-    private Boolean isActive;
-    private String standardPrice;
+
+    // Champs dénormalisés
+    private UUID clientId;
+    private String clientName;
+    private String clientPhoneNumber;
+    private String profileImageUrl;
+
+    // Champs communs
+    private String title;
+    private ProductStatus status;
+    private TripType tripType;
+    private boolean isNegotiable;
+    private String paymentMethod;
     private String departureLocation;
-    private String arrivalLocation;
+    private String dropoffLocation;
+    private String meetupPoint;
+    private String tripIntention;
+    private String pricingMethod;
     private OffsetDateTime startDate;
     private LocalTime startTime;
     private OffsetDateTime endDate;
     private LocalTime endTime;
+    private UUID reservedById;
+    private OffsetDateTime createdAt;
+    private OffsetDateTime updatedAt;
+
+    // Champs Annonce
+    private String cost;
     private String baggageInfo;
-    private Boolean isNegotiable;
-    private String paymentMethod;
-    private String title;
-    private String status;
-    private Timestamp createdAt;
-    private Timestamp updatedAt;
-    private List<String> productUrls;
+
+    // Champs Planning
+    private String paymentOption;
     private String regularAmount;
     private BigDecimal discountPercentage;
     private BigDecimal discountedAmount;
-    private List<String> metadata;
-    private String productType; // ANNONCE, PLANNING, CV
 
-    // Annonce specific
-    private OffsetDateTime requiredDate;
-    private String category;
-
-    // CV specific
-    private List<String> skills;
-    private String fileUrl;
-
-    // Planning specific
-    private Integer availableSeats;
+    // Champ technique
+    private String productType;
 }// END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/outbound/persistence/entity/ProductEntity.java
 
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/infrastructure/adapters/outbound/persistence/entity/ReactionEntity.java
@@ -7449,9 +8881,21 @@ public class ProductR2dbcAdapter implements ProductRepositoryPort {
     }
 
     @Override
+    public Mono<Product> findByIdAndProductType(UUID id, String productType) {
+        return repository.findByIdAndProductType(id, productType)
+                .map(mapper::toDomain);
+    }
+
+    @Override
     public Flux<Product> findAll(){
         return repository.findAll().
                map(mapper::toDomain);
+    }
+
+    @Override
+    public Flux<Product> findByProductTypeAndClientId(String productType, UUID clientId) {
+        return repository.findByProductTypeAndClientId(productType, clientId)
+                .map(mapper::toDomain);
     }
 
     @Override
@@ -7520,11 +8964,16 @@ package com.yowyob.template.infrastructure.adapters.outbound.persistence.reposit
 import com.yowyob.template.infrastructure.adapters.outbound.persistence.entity.ProductEntity;
 import org.springframework.data.repository.reactive.ReactiveCrudRepository;
 import org.springframework.stereotype.Repository;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.util.UUID;
 
 @Repository
-public interface ProductR2dbcRepository extends ReactiveCrudRepository<ProductEntity, UUID> {}// END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/outbound/persistence/repository/ProductR2dbcRepository.java
+public interface ProductR2dbcRepository extends ReactiveCrudRepository<ProductEntity, UUID> {
+    Mono<ProductEntity> findByIdAndProductType(UUID id, String productType);
+    Flux<ProductEntity> findByProductTypeAndClientId(String productType, UUID clientId);
+}// END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/outbound/persistence/repository/ProductR2dbcRepository.java
 
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/infrastructure/adapters/outbound/persistence/repository/ReactionR2dbcRepository.java
 
@@ -7755,6 +9204,57 @@ public class OpenApiConfig {
                                 .url("http://springdoc.org")));
     }
 }// END OF FILE: src/main/java/com/yowyob/template/infrastructure/config/OpenApiConfig.java
+
+//---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/infrastructure/config/R2dbcConfig.java
+
+package com.yowyob.template.infrastructure.config;
+
+import com.yowyob.template.domain.model.ProductStatus;
+import com.yowyob.template.domain.model.TripType;
+import io.r2dbc.postgresql.PostgresqlConnectionConfiguration;
+import io.r2dbc.postgresql.PostgresqlConnectionFactory;
+import io.r2dbc.postgresql.PostgresqlConnectionFactoryProvider;
+import io.r2dbc.postgresql.codec.EnumCodec;
+import io.r2dbc.postgresql.extension.CodecRegistrar;
+import io.r2dbc.spi.ConnectionFactories;
+import io.r2dbc.spi.ConnectionFactory;
+import io.r2dbc.spi.ConnectionFactoryOptions;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class R2dbcConfig {
+
+    @Value("${spring.r2dbc.url}")
+    private String r2dbcUrl;
+
+    @Value("${spring.r2dbc.username}")
+    private String r2dbcUsername;
+
+    @Value("${spring.r2dbc.password}")
+    private String r2dbcPassword;
+
+    @Bean
+    public ConnectionFactory connectionFactory() {
+        CodecRegistrar enumCodecs = EnumCodec.builder()
+                .withEnum("product_status", ProductStatus.class)
+                .withEnum("trip_type", TripType.class)
+                .build();
+
+        ConnectionFactoryOptions options = ConnectionFactoryOptions.parse(r2dbcUrl)
+                .mutate()
+                .option(ConnectionFactoryOptions.USER, r2dbcUsername)
+                .option(ConnectionFactoryOptions.PASSWORD, r2dbcPassword)
+                .build();
+
+        PostgresqlConnectionConfiguration.Builder builder = PostgresqlConnectionFactoryProvider.builder(options);
+        builder.extendWith(enumCodecs);
+
+        return new PostgresqlConnectionFactory(builder.build());
+    }
+}
+// END OF FILE: src/main/java/com/yowyob/template/infrastructure/config/R2dbcConfig.java
 
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/infrastructure/config/RedisConfig.java
 
@@ -8004,128 +9504,119 @@ public interface ContactMapper {
 package com.yowyob.template.infrastructure.mappers;
 
 import com.yowyob.template.domain.model.*;
-import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.ProductRequest;
 import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.ProductResponse;
 import com.yowyob.template.infrastructure.adapters.outbound.persistence.entity.ProductEntity;
+import java.time.ZoneOffset;
 import org.mapstruct.Mapper;
-import org.mapstruct.Mapping;
 
 @Mapper(componentModel = "spring")
 public interface ProductMapper {
 
-    @Mapping(target = "orgId", source = "organizationId")
-    @Mapping(target = "id", ignore = false)
     default Product toDomain(ProductEntity entity) {
         if (entity == null) return null;
-        
-        Product.ProductBuilder<?, ?> builder;
-        String type = entity.getProductType();
-        
-        if ("PLANNING".equalsIgnoreCase(type)) {
-            builder = Planning.builder()
-                    .availableSeats(entity.getAvailableSeats())
-                    .startTime(entity.getStartTime())
-                    .endTime(entity.getEndTime())
-                    .departureTime(entity.getStartDate())
-                    .arrivalTime(entity.getEndDate())
-                    .baggageAllowed(entity.getBaggageInfo() != null)
-                    .baggageInfo(entity.getBaggageInfo())
-                    .paymentMethod(entity.getPaymentMethod())
-                    .isNegotiable(entity.getIsNegotiable());
-        } else if ("CV".equalsIgnoreCase(type)) {
-            builder = CV.builder()
-                    .skills(entity.getSkills())
-                    .fileUrl(entity.getFileUrl());
-        } else if ("ANNONCE".equalsIgnoreCase(type)) {
-            builder = Annonce.builder()
-                    .requiredDate(entity.getRequiredDate())
-                    .category(entity.getCategory());
-        } else {
-            builder = Annonce.builder();
-        }
 
-        return builder
-                .id(entity.getId())
-                .orgId(entity.getOrganizationId())
-                .title(entity.getTitle())
-                .name(entity.getName())
-                .description(entity.getDescription())
-                .status(entity.getStatus() != null ? ProductStatus.valueOf(entity.getStatus()) : null)
-                .isActive(entity.getIsActive())
-                .standardPrice(entity.getStandardPrice())
-                .productUrls(entity.getProductUrls())
+        if ("PLANNING".equalsIgnoreCase(entity.getProductType())) {
+            Planning planning = Planning.builder()
+                .paymentOption(entity.getPaymentOption())
                 .regularAmount(entity.getRegularAmount())
-                .discountPercentage(entity.getDiscountPercentage())
-                .discountedAmount(entity.getDiscountedAmount())
-                .metadata(entity.getMetadata())
-                .createdAt(entity.getCreatedAt())
-                .updatedAt(entity.getUpdatedAt())
+                .discountPercentage(entity.getDiscountPercentage() != null ? entity.getDiscountPercentage().toString() : null)
+                .discountedAmount(entity.getDiscountedAmount() != null ? entity.getDiscountedAmount().toString() : null)
                 .build();
+            mapCommonFieldsToDomain(planning, entity);
+            return planning;
+
+        } else if ("ANNONCE".equalsIgnoreCase(entity.getProductType())) {
+            Annonce annonce = Annonce.builder()
+                .cost(entity.getCost())
+                .baggageInfo(entity.getBaggageInfo())
+                .build();
+            mapCommonFieldsToDomain(annonce, entity);
+            return annonce;
+        }
+        return null;
     }
 
-    @Mapping(target = "organizationId", source = "orgId")
     default ProductEntity toEntity(Product domain) {
         if (domain == null) return null;
-        
         ProductEntity entity = new ProductEntity();
-        entity.setId(domain.getId());
-        entity.setOrganizationId(domain.getOrgId());
-        entity.setTitle(domain.getTitle());
-        entity.setName(domain.getName());
-        entity.setDescription(domain.getDescription());
-        entity.setStatus(domain.getStatus() != null ? domain.getStatus().name() : null);
-        entity.setIsActive(domain.getIsActive());
-        entity.setStandardPrice(domain.getStandardPrice());
-        entity.setProductUrls(domain.getProductUrls());
-        entity.setRegularAmount(domain.getRegularAmount());
-        entity.setDiscountPercentage(domain.getDiscountPercentage());
-        entity.setDiscountedAmount(domain.getDiscountedAmount());
-        entity.setMetadata(domain.getMetadata());
-        entity.setCreatedAt(domain.getCreatedAt());
-        entity.setUpdatedAt(domain.getUpdatedAt());
+        mapCommonFieldsToEntity(entity, domain);
 
         if (domain instanceof Planning planning) {
             entity.setProductType("PLANNING");
-            entity.setAvailableSeats(planning.getAvailableSeats());
-            entity.setStartTime(planning.getStartTime());
-            entity.setEndTime(planning.getEndTime());
-            entity.setStartDate(planning.getDepartureTime());
-            entity.setEndDate(planning.getArrivalTime());
-            entity.setBaggageInfo(planning.getBaggageInfo());
-            entity.setPaymentMethod(planning.getPaymentMethod());
-            entity.setIsNegotiable(planning.getIsNegotiable());
-        } else if (domain instanceof CV cv) {
-            entity.setProductType("CV");
-            entity.setSkills(cv.getSkills());
-            entity.setFileUrl(cv.getFileUrl());
+            entity.setPaymentOption(planning.getPaymentOption());
+            entity.setRegularAmount(planning.getRegularAmount());
+            if (planning.getDiscountPercentage() != null) entity.setDiscountPercentage(new java.math.BigDecimal(planning.getDiscountPercentage()));
+            if (planning.getDiscountedAmount() != null) entity.setDiscountedAmount(new java.math.BigDecimal(planning.getDiscountedAmount()));
+                
         } else if (domain instanceof Annonce annonce) {
             entity.setProductType("ANNONCE");
-            entity.setRequiredDate(annonce.getRequiredDate());
-            entity.setCategory(annonce.getCategory());
+            entity.setCost(annonce.getCost());
+            entity.setBaggageInfo(annonce.getBaggageInfo());
         }
-
         return entity;
     }
 
-    default ProductResponse toResponse(Product domain) {
-        if (domain == null) return null;
-        ProductResponse response = new ProductResponse();
-        response.setId(domain.getId());
-        response.setTitle(domain.getTitle());
-        response.setDescription(domain.getDescription());
-        response.setStatus(domain.getStatus() != null ? domain.getStatus().name() : null);
-        response.setPrice(domain.getPrice());
-        
-        if (domain instanceof Planning) response.setType("PLANNING");
-        else if (domain instanceof CV) response.setType("CV");
-        else if (domain instanceof Annonce) response.setType("ANNONCE");
-        
-        return response;
+    // Mapper pour la réponse API
+    ProductResponse toResponse(Product domain);
+    
+    private void mapCommonFieldsToEntity(ProductEntity entity, Product domain) {
+        entity.setId(domain.getId());
+        entity.setOrganizationId(domain.getOrgId());
+        entity.setClientId(domain.getClientId());
+        entity.setClientName(domain.getClientName());
+        entity.setClientPhoneNumber(domain.getClientPhoneNumber());
+        entity.setProfileImageUrl(domain.getProfileImageUrl());
+        entity.setTitle(domain.getTitle());
+        entity.setDepartureLocation(domain.getDepartureLocation());
+        entity.setDropoffLocation(domain.getDropoffLocation());
+        entity.setStartDate(domain.getStartDate());
+        entity.setStartTime(domain.getStartTime());
+        entity.setEndDate(domain.getEndDate());
+        entity.setEndTime(domain.getEndTime());
+        entity.setReservedById(domain.getReservedById());
+        entity.setNegotiable(domain.isNegotiable());
+        entity.setPaymentMethod(domain.getPaymentMethod());
+        entity.setStatus(domain.getStatus());
+        entity.setTripType(domain.getTripType());
+        entity.setMeetupPoint(domain.getMeetupPoint());
+        entity.setTripIntention(domain.getTripIntention());
+        entity.setPricingMethod(domain.getPricingMethod());
+        entity.setCreatedAt(domain.getCreatedAt() != null
+                ? domain.getCreatedAt().toInstant().atOffset(ZoneOffset.UTC)
+                : null);
+        entity.setUpdatedAt(domain.getUpdatedAt() != null
+                ? domain.getUpdatedAt().toInstant().atOffset(ZoneOffset.UTC)
+                : null);
     }
 
-    default Product toDomain(ProductRequest request) {
-        if (request == null) return null;
-        return null; 
+    private void mapCommonFieldsToDomain(Product product, ProductEntity entity) {
+        product.setId(entity.getId());
+        product.setOrgId(entity.getOrganizationId());
+        product.setClientId(entity.getClientId());
+        product.setClientName(entity.getClientName());
+        product.setClientPhoneNumber(entity.getClientPhoneNumber());
+        product.setProfileImageUrl(entity.getProfileImageUrl());
+        product.setTitle(entity.getTitle());
+        product.setDepartureLocation(entity.getDepartureLocation());
+        product.setDropoffLocation(entity.getDropoffLocation());
+        product.setStartDate(entity.getStartDate());
+        product.setStartTime(entity.getStartTime());
+        product.setEndDate(entity.getEndDate());
+        product.setEndTime(entity.getEndTime());
+        product.setReservedById(entity.getReservedById());
+        product.setNegotiable(entity.isNegotiable());
+        product.setPaymentMethod(entity.getPaymentMethod());
+        product.setStatus(entity.getStatus());
+        product.setTripType(entity.getTripType());
+        product.setMeetupPoint(entity.getMeetupPoint());
+        product.setTripIntention(entity.getTripIntention());
+        product.setPricingMethod(entity.getPricingMethod());
+        product.setCreatedAt(entity.getCreatedAt() != null
+                ? java.sql.Timestamp.from(entity.getCreatedAt().toInstant())
+                : null);
+        product.setUpdatedAt(entity.getUpdatedAt() != null
+                ? java.sql.Timestamp.from(entity.getUpdatedAt().toInstant())
+                : null);
     }
 }
 // END OF FILE: src/main/java/com/yowyob/template/infrastructure/mappers/ProductMapper.java
@@ -8333,7 +9824,7 @@ spring:
     password: ${DB_PASSWORD:password}
     pool:
       enabled: true
-      initial-size: 1
+      initial-size: 0
       max-size: 5
       max-idle-time: 30m
       max-life-time: 10m
@@ -8502,198 +9993,128 @@ resilience4j:
 
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/resources/schema.sql
 
+-- Nettoyage des anciennes tables si elles existent
 DROP TABLE IF EXISTS products CASCADE;
-DROP TABLE IF EXISTS Organization CASCADE;
-DROP TABLE IF EXISTS BusinessActor CASCADE;
 DROP TABLE IF EXISTS Review CASCADE;
 DROP TABLE IF EXISTS reactions CASCADE;
 DROP TABLE IF EXISTS Settings CASCADE;
+DROP TYPE IF EXISTS product_status CASCADE;
+DROP TYPE IF EXISTS trip_type CASCADE;
 
+-- Ajout de l'extension pour les UUIDs si elle n'existe pas
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
-CREATE TABLE BusinessActor (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID,
-    display_name TEXT,
-    phone_number TEXT,
-    email_address TEXT,
-    avatar_url TEXT
+-- 1. ENUMERATIONS (Types de données contrôlés)
+
+CREATE TYPE product_status AS ENUM (
+    'Draft',
+    'Published',
+    'PendingConfirmation',
+    'PendingDriverConfirmation',
+    'Confirmed',
+    'Ongoing',
+    'Terminated',
+    'Expired',
+    'Cancelled'
 );
 
-CREATE TABLE Organization (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    business_actor_id UUID REFERENCES BusinessActor(id),
-    logo_id TEXT,
-    code TEXT,
-    service VARCHAR(255),
-    is_individual_business BOOLEAN,
-    email VARCHAR(255),
-    short_name VARCHAR(100),
-    long_name VARCHAR(255),
-    description VARCHAR(300),
-    logo_uri TEXT,
-    website_url TEXT,
-    social_network VARCHAR(255),
-    business_registration_number NUMERIC,
-    tax_number NUMERIC,
-    capital_share VARCHAR(200),
-    ceo_name TEXT,
-    year_founded TIMESTAMP,
-    keywords TEXT[],
-    number_of_employees INT,
-    legal_form TEXT,
-    is_active BOOLEAN,
-    status TEXT,
-    created_at TIMESTAMP,
-    updated_at TIMESTAMP,
-    deleted_at TIMESTAMP,
-    syndicate_name VARCHAR(255)
+CREATE CAST (varchar AS product_status) WITH INOUT AS IMPLICIT;
+
+CREATE TYPE trip_type AS ENUM (
+    'ONE_WAY',
+    'ROUND_TRIP'
 );
+
+CREATE CAST (varchar AS trip_type) WITH INOUT AS IMPLICIT;
+
+-- 2. TABLE PRINCIPALE : PRODUCTS
 
 CREATE TABLE products (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    organization_id UUID REFERENCES Organization(id),
-    name VARCHAR(255),
-    description VARCHAR(500),
-    is_active BOOLEAN,
-    standard_price VARCHAR(255),
-    departure_location TEXT, -- changed from TIMESTAMPTZ, should be address or coordinates
-    arrival_location TEXT,   -- changed from TIMESTAMPTZ, should be address or coordinates
-    start_date TIMESTAMPTZ DEFAULT NOW(),
+    organization_id UUID NOT NULL,
+
+    -- Données dénormalisées de l'auteur pour l'affichage rapide
+    client_id UUID NOT NULL,
+    client_name VARCHAR(255),
+    client_phone_number VARCHAR(50),
+    profile_image_url TEXT,
+
+    -- Champs communs enrichis
+    title VARCHAR(100) NOT NULL,
+    status product_status DEFAULT 'Draft',
+    trip_type trip_type,
+    is_negotiable BOOLEAN DEFAULT false,
+    payment_method VARCHAR(100),
+    departure_location TEXT,
+    dropoff_location TEXT,
+    meetup_point TEXT,
+    trip_intention VARCHAR(100),
+    pricing_method VARCHAR(100),
+    start_date TIMESTAMPTZ,
     start_time TIME,
     end_date TIMESTAMPTZ,
     end_time TIME,
+    reserved_by_id UUID,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE,
+    
+    -- Champs spécifiques à l'Annonce (nullable pour les Plannings)
+    cost VARCHAR(255),
     baggage_info VARCHAR(255),
-    is_negotiable BOOLEAN,
-    payment_method VARCHAR(100),
-    title VARCHAR(100),
-    status TEXT CHECK(status in ('DRAFT', 'WAITING_CONFIRMATION', 'PUBLISHED', 'IN_PROGRESS', 'CANCELLED', 'EXPIRED')),
-    created_at TIMESTAMP,
-    updated_at TIMESTAMP,
-    product_urls TEXT[],
+
+    -- Champs spécifiques au Planning (nullable pour les Annonces)
+    payment_option VARCHAR(100),
     regular_amount VARCHAR(200),
     discount_percentage DECIMAL,
     discounted_amount DECIMAL,
-    metadata TEXT[],
-    product_type VARCHAR(50),
-    required_date TIMESTAMPTZ,
-    category VARCHAR(255),
-    skills TEXT[],
-    file_url TEXT,
-    available_seats INT
+    
+    -- Champ technique pour le polymorphisme
+    product_type VARCHAR(50) NOT NULL -- 'PLANNING' ou 'ANNONCE'
 );
+
+-- 3. TABLES SOCIALES (INTERACTIONS)
 
 CREATE TABLE Review (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    ride_id UUID,
-    author_id UUID,
-    subject_id UUID,
-    subject_type TEXT,
-    rating INT,
+    author_id UUID NOT NULL,
+    subject_id UUID NOT NULL,
+    subject_type TEXT NOT NULL,
+    rating INT CHECK (rating >= 1 AND rating <= 5),
     comment TEXT,
-    created_at TIMESTAMP DEFAULT NOW()
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 CREATE TABLE reactions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    actor_id UUID,
-    target_id UUID,
-    target_type TEXT,
-    type TEXT,
-    created_at TIMESTAMP DEFAULT NOW()
+    actor_id UUID NOT NULL,
+    target_id UUID NOT NULL,
+    target_type TEXT NOT NULL,
+    type TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE (actor_id, target_id, target_type) -- Un utilisateur ne peut avoir qu'une réaction par cible
 );
+
+-- 4. TABLE DES PREFERENCES UTILISATEUR
 
 CREATE TABLE Settings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    business_actor_id UUID REFERENCES BusinessActor(id),
-    key TEXT,
-    value TEXT
-);
-
-
--- ...existing code...
-
-CREATE TABLE IF NOT EXISTS Settings (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id TEXT,
+    user_id TEXT NOT NULL UNIQUE, -- Lien logique vers Auth Service
     theme TEXT,
     language TEXT,
-    long_ride_enabled BOOLEAN,
-    short_ride_enabled BOOLEAN,
-    privacy_enable BOOLEAN,
-    allow_calls BOOLEAN,
-    allow_messages BOOLEAN,
-    notify_new_rides BOOLEAN,
-    notify_ratings BOOLEAN,
-    notify_practical_tips BOOLEAN,
-    notify_promotions BOOLEAN,
-    notify_policy_updates BOOLEAN,
-    notify_peak_hour_recommendations BOOLEAN,
-    receive_email BOOLEAN,
-    receive_sms BOOLEAN,
-    receive_push_notifications BOOLEAN,
-    receive_whatsapp BOOLEAN,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP
-);
-
-
-CREATE TABLE IF NOT EXISTS Address (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    addressable_type TEXT,
-    type TEXT,
-    address_line_1 VARCHAR(255),
-    address_line_2 VARCHAR(255),
-    city TEXT,
-    state VARCHAR(100),
-    locality TEXT,
-    zip_code TEXT,
-    postal_code TEXT,
-    po_box TEXT,
-    is_default BOOLEAN,
-    neighborhood TEXT,
-    informal_description VARCHAR(300),
-    latitude NUMERIC,
-    longitude NUMERIC,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW(),
-    deleted_at TIMESTAMP
-);
-
-
-CREATE TABLE IF NOT EXISTS Contact (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    contactable_id UUID REFERENCES Organization(id),
-    contactable_type TEXT,
-    first_name TEXT,
-    last_name TEXT,
-    title TEXT,
-    is_email_verified BOOLEAN,
-    is_phone_number_verified BOOLEAN,
-    is_favorite BOOLEAN,
-    phone_number TEXT,
-    secondary_phone_number TEXT,
-    fax_number TEXT,
-    email TEXT,
-    secondary_email TEXT,
-    email_verified_at TIMESTAMP,
-    phone_verified_at TIMESTAMP,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP,
-    deleted_at TIMESTAMP
-);
-
--- Removed duplicate BusinessActor definition
-// END OF FILE: src/main/resources/schema.sql
+    -- ... autres champs de préférences ...
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE
+);// END OF FILE: src/main/resources/schema.sql
 
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/test/java/com/yowyob/reactive_hexagonal/ReactiveHexagonalApplicationTests.java
 
 package com.yowyob.reactive_hexagonal;
 
+import com.yowyob.template.TemplateApplication;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
-@SpringBootTest
+@SpringBootTest(classes = TemplateApplication.class)
 class ReactiveHexagonalApplicationTests {
 
 	@Test

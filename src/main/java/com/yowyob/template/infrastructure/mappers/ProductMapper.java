@@ -1,127 +1,118 @@
 package com.yowyob.template.infrastructure.mappers;
 
 import com.yowyob.template.domain.model.*;
-import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.ProductRequest;
 import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.ProductResponse;
 import com.yowyob.template.infrastructure.adapters.outbound.persistence.entity.ProductEntity;
+import java.time.ZoneOffset;
 import org.mapstruct.Mapper;
-import org.mapstruct.Mapping;
 
 @Mapper(componentModel = "spring")
 public interface ProductMapper {
 
-    @Mapping(target = "orgId", source = "organizationId")
-    @Mapping(target = "id", ignore = false)
     default Product toDomain(ProductEntity entity) {
         if (entity == null) return null;
-        
-        Product.ProductBuilder<?, ?> builder;
-        String type = entity.getProductType();
-        
-        if ("PLANNING".equalsIgnoreCase(type)) {
-            builder = Planning.builder()
-                    .availableSeats(entity.getAvailableSeats())
-                    .startTime(entity.getStartTime())
-                    .endTime(entity.getEndTime())
-                    .departureTime(entity.getStartDate())
-                    .arrivalTime(entity.getEndDate())
-                    .baggageAllowed(entity.getBaggageInfo() != null)
-                    .baggageInfo(entity.getBaggageInfo())
-                    .paymentMethod(entity.getPaymentMethod())
-                    .isNegotiable(entity.getIsNegotiable());
-        } else if ("CV".equalsIgnoreCase(type)) {
-            builder = CV.builder()
-                    .skills(entity.getSkills())
-                    .fileUrl(entity.getFileUrl());
-        } else if ("ANNONCE".equalsIgnoreCase(type)) {
-            builder = Annonce.builder()
-                    .requiredDate(entity.getRequiredDate())
-                    .category(entity.getCategory());
-        } else {
-            builder = Annonce.builder();
-        }
 
-        return builder
-                .id(entity.getId())
-                .orgId(entity.getOrganizationId())
-                .title(entity.getTitle())
-                .name(entity.getName())
-                .description(entity.getDescription())
-                .status(entity.getStatus() != null ? ProductStatus.valueOf(entity.getStatus()) : null)
-                .isActive(entity.getIsActive())
-                .standardPrice(entity.getStandardPrice())
-                .productUrls(entity.getProductUrls())
+        if ("PLANNING".equalsIgnoreCase(entity.getProductType())) {
+            Planning planning = Planning.builder()
+                .paymentOption(entity.getPaymentOption())
                 .regularAmount(entity.getRegularAmount())
-                .discountPercentage(entity.getDiscountPercentage())
-                .discountedAmount(entity.getDiscountedAmount())
-                .metadata(entity.getMetadata())
-                .createdAt(entity.getCreatedAt())
-                .updatedAt(entity.getUpdatedAt())
+                .discountPercentage(entity.getDiscountPercentage() != null ? entity.getDiscountPercentage().toString() : null)
+                .discountedAmount(entity.getDiscountedAmount() != null ? entity.getDiscountedAmount().toString() : null)
                 .build();
+            mapCommonFieldsToDomain(planning, entity);
+            return planning;
+
+        } else if ("ANNONCE".equalsIgnoreCase(entity.getProductType())) {
+            Annonce annonce = Annonce.builder()
+                .cost(entity.getCost())
+                .baggageInfo(entity.getBaggageInfo())
+                .build();
+            mapCommonFieldsToDomain(annonce, entity);
+            return annonce;
+        }
+        return null;
     }
 
-    @Mapping(target = "organizationId", source = "orgId")
     default ProductEntity toEntity(Product domain) {
         if (domain == null) return null;
-        
         ProductEntity entity = new ProductEntity();
-        entity.setId(domain.getId());
-        entity.setOrganizationId(domain.getOrgId());
-        entity.setTitle(domain.getTitle());
-        entity.setName(domain.getName());
-        entity.setDescription(domain.getDescription());
-        entity.setStatus(domain.getStatus() != null ? domain.getStatus().name() : null);
-        entity.setIsActive(domain.getIsActive());
-        entity.setStandardPrice(domain.getStandardPrice());
-        entity.setProductUrls(domain.getProductUrls());
-        entity.setRegularAmount(domain.getRegularAmount());
-        entity.setDiscountPercentage(domain.getDiscountPercentage());
-        entity.setDiscountedAmount(domain.getDiscountedAmount());
-        entity.setMetadata(domain.getMetadata());
-        entity.setCreatedAt(domain.getCreatedAt());
-        entity.setUpdatedAt(domain.getUpdatedAt());
+        mapCommonFieldsToEntity(entity, domain);
 
         if (domain instanceof Planning planning) {
             entity.setProductType("PLANNING");
-            entity.setAvailableSeats(planning.getAvailableSeats());
-            entity.setStartTime(planning.getStartTime());
-            entity.setEndTime(planning.getEndTime());
-            entity.setStartDate(planning.getDepartureTime());
-            entity.setEndDate(planning.getArrivalTime());
-            entity.setBaggageInfo(planning.getBaggageInfo());
-            entity.setPaymentMethod(planning.getPaymentMethod());
-            entity.setIsNegotiable(planning.getIsNegotiable());
-        } else if (domain instanceof CV cv) {
-            entity.setProductType("CV");
-            entity.setSkills(cv.getSkills());
-            entity.setFileUrl(cv.getFileUrl());
+            entity.setPaymentOption(planning.getPaymentOption());
+            entity.setRegularAmount(planning.getRegularAmount());
+            if (planning.getDiscountPercentage() != null) entity.setDiscountPercentage(new java.math.BigDecimal(planning.getDiscountPercentage()));
+            if (planning.getDiscountedAmount() != null) entity.setDiscountedAmount(new java.math.BigDecimal(planning.getDiscountedAmount()));
+                
         } else if (domain instanceof Annonce annonce) {
             entity.setProductType("ANNONCE");
-            entity.setRequiredDate(annonce.getRequiredDate());
-            entity.setCategory(annonce.getCategory());
+            entity.setCost(annonce.getCost());
+            entity.setBaggageInfo(annonce.getBaggageInfo());
         }
-
         return entity;
     }
 
-    default ProductResponse toResponse(Product domain) {
-        if (domain == null) return null;
-        ProductResponse response = new ProductResponse();
-        response.setId(domain.getId());
-        response.setTitle(domain.getTitle());
-        response.setDescription(domain.getDescription());
-        response.setStatus(domain.getStatus() != null ? domain.getStatus().name() : null);
-        response.setPrice(domain.getPrice());
-        
-        if (domain instanceof Planning) response.setType("PLANNING");
-        else if (domain instanceof CV) response.setType("CV");
-        else if (domain instanceof Annonce) response.setType("ANNONCE");
-        
-        return response;
+    // Mapper pour la réponse API
+    ProductResponse toResponse(Product domain);
+    
+    private void mapCommonFieldsToEntity(ProductEntity entity, Product domain) {
+        entity.setId(domain.getId());
+        entity.setOrganizationId(domain.getOrgId());
+        entity.setClientId(domain.getClientId());
+        entity.setClientName(domain.getClientName());
+        entity.setClientPhoneNumber(domain.getClientPhoneNumber());
+        entity.setProfileImageUrl(domain.getProfileImageUrl());
+        entity.setTitle(domain.getTitle());
+        entity.setDepartureLocation(domain.getDepartureLocation());
+        entity.setDropoffLocation(domain.getDropoffLocation());
+        entity.setStartDate(domain.getStartDate());
+        entity.setStartTime(domain.getStartTime());
+        entity.setEndDate(domain.getEndDate());
+        entity.setEndTime(domain.getEndTime());
+        entity.setReservedById(domain.getReservedById());
+        entity.setNegotiable(domain.isNegotiable());
+        entity.setPaymentMethod(domain.getPaymentMethod());
+        entity.setStatus(domain.getStatus());
+        entity.setTripType(domain.getTripType());
+        entity.setMeetupPoint(domain.getMeetupPoint());
+        entity.setTripIntention(domain.getTripIntention());
+        entity.setPricingMethod(domain.getPricingMethod());
+        entity.setCreatedAt(domain.getCreatedAt() != null
+                ? domain.getCreatedAt().toInstant().atOffset(ZoneOffset.UTC)
+                : null);
+        entity.setUpdatedAt(domain.getUpdatedAt() != null
+                ? domain.getUpdatedAt().toInstant().atOffset(ZoneOffset.UTC)
+                : null);
     }
 
-    default Product toDomain(ProductRequest request) {
-        if (request == null) return null;
-        return null; 
+    private void mapCommonFieldsToDomain(Product product, ProductEntity entity) {
+        product.setId(entity.getId());
+        product.setOrgId(entity.getOrganizationId());
+        product.setClientId(entity.getClientId());
+        product.setClientName(entity.getClientName());
+        product.setClientPhoneNumber(entity.getClientPhoneNumber());
+        product.setProfileImageUrl(entity.getProfileImageUrl());
+        product.setTitle(entity.getTitle());
+        product.setDepartureLocation(entity.getDepartureLocation());
+        product.setDropoffLocation(entity.getDropoffLocation());
+        product.setStartDate(entity.getStartDate());
+        product.setStartTime(entity.getStartTime());
+        product.setEndDate(entity.getEndDate());
+        product.setEndTime(entity.getEndTime());
+        product.setReservedById(entity.getReservedById());
+        product.setNegotiable(entity.isNegotiable());
+        product.setPaymentMethod(entity.getPaymentMethod());
+        product.setStatus(entity.getStatus());
+        product.setTripType(entity.getTripType());
+        product.setMeetupPoint(entity.getMeetupPoint());
+        product.setTripIntention(entity.getTripIntention());
+        product.setPricingMethod(entity.getPricingMethod());
+        product.setCreatedAt(entity.getCreatedAt() != null
+                ? java.sql.Timestamp.from(entity.getCreatedAt().toInstant())
+                : null);
+        product.setUpdatedAt(entity.getUpdatedAt() != null
+                ? java.sql.Timestamp.from(entity.getUpdatedAt().toInstant())
+                : null);
     }
 }
