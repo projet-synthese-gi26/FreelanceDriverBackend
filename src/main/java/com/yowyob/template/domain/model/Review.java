@@ -6,7 +6,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.sql.Timestamp;
+import java.time.OffsetDateTime;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -24,7 +24,7 @@ public class Review implements Reactable {
     private Integer rating;
     private String comment;
     private Boolean isVerifiedPurchase;
-    private Timestamp createdAt;
+    private OffsetDateTime createdAt;
 
     @Override
     public UUID getReactableId() {

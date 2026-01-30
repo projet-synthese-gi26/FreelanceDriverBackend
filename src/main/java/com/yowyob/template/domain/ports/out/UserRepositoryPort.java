@@ -10,7 +10,7 @@ public interface UserRepositoryPort {
     Mono<User> findById(UUID id);
     Mono<User> findById(UUID id, String jwtToken);
     Mono<User> findByEmail(String email);
-    Mono<User> updateUser(UUID id, User user);
-    Mono<Void> updatePassword(UUID id, String currentPassword, String newPassword);
-    Mono<User> updatePicture(UUID id, FilePart file);
+    Mono<User> updateUser(UUID id, User user, String jwtToken);
+    Mono<Void> updatePassword(UUID id, String currentPassword, String newPassword, String jwtToken);
+    Mono<User> updatePicture(UUID id, FilePart file, String jwtToken);
 }

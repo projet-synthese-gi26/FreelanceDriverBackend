@@ -10,7 +10,7 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-import java.sql.Timestamp;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Slf4j
@@ -29,8 +29,7 @@ public class ReviewService implements ReviewUseCase {
                     if (!exists) {
                         return Mono.error(new IllegalArgumentException("Subject " + review.getSubjectId() + " does not exist"));
                     }
-                    review.setId(UUID.randomUUID());
-                    review.setCreatedAt(new Timestamp(System.currentTimeMillis()));
+                    review.setCreatedAt(OffsetDateTime.now());
                     return repository.save(review);
                 });
     }

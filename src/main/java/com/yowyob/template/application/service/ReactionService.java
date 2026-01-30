@@ -11,7 +11,7 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-import java.sql.Timestamp;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Slf4j
@@ -32,12 +32,11 @@ public class ReactionService implements ReactionUseCase {
                         return Mono.error(new IllegalArgumentException("Target " + targetId + " of type " + targetType + " does not exist"));
                     }
                     Reaction reaction = Reaction.builder()
-                            .id(UUID.randomUUID())
                             .actorId(actorId)
                             .targetId(targetId)
                             .targetType(targetType)
                             .type(type)
-                            .createdAt(new Timestamp(System.currentTimeMillis()))
+                            .createdAt(OffsetDateTime.now())
                             .build();
                     return repository.save(reaction);
                 });

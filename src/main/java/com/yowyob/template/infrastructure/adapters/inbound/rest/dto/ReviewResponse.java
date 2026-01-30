@@ -1,16 +1,15 @@
 package com.yowyob.template.infrastructure.adapters.inbound.rest.dto;
 
-import java.sql.Timestamp;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 public class ReviewResponse {
     private UUID id;
-    private UUID rideId;
     private UUID authorId;
     private UUID subjectId;
     private Integer rating;
     private String comment;
-    private Timestamp createdAt;
+    private OffsetDateTime createdAt;
 
     public UUID getId() {
         return id;
@@ -18,14 +17,6 @@ public class ReviewResponse {
 
     public void setId(UUID id) {
         this.id = id;
-    }
-
-    public UUID getRideId() {
-        return rideId;
-    }
-
-    public void setRideId(UUID rideId) {
-        this.rideId = rideId;
     }
 
     public UUID getAuthorId() {
@@ -60,11 +51,11 @@ public class ReviewResponse {
         this.comment = comment;
     }
 
-    public Timestamp getCreatedAt() {
+    public OffsetDateTime getCreatedAt() {
         return createdAt;
     }
 
-    public void setCreatedAt(Timestamp createdAt) {
+    public void setCreatedAt(OffsetDateTime createdAt) {
         this.createdAt = createdAt;
     }
 }

@@ -7,7 +7,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.sql.Timestamp;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Data
@@ -20,5 +20,5 @@ public class ReactionResponse {
     private UUID targetId;
     private SubjectType targetType;
     private ReactionType type;
-    private Timestamp createdAt;
+    private OffsetDateTime createdAt;
 }

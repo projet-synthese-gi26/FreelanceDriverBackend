@@ -1,5 +1,5 @@
 Project Context From: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre
-Generated On: ven. 30 janv. 2026 12:59:51 WAT
+Generated On: ven. 30 janv. 2026 18:02:28 WAT
 ===============================================
 Ignored Directory Patterns: .* node_modules vendor build dist target __pycache__ .next cache target storage
 Ignored File Patterns: *.log *.jar *.pdf *.class *.sqlite project_context.txt package-lock.json yarn.lock composer.lock *.ico pnpm-lock.yaml
@@ -2731,7 +2731,7 @@ public class DriverProfileService {
 
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/application/service/OnboardingService.java
 
-package com.yowyob.template.application.service;
+/*package com.yowyob.template.application.service;
 
 import com.yowyob.template.domain.model.*;
 import com.yowyob.template.domain.ports.out.*;
@@ -2874,7 +2874,199 @@ public class OnboardingService {
                 });
     }
 }
-// END OF FILE: src/main/java/com/yowyob/template/application/service/OnboardingService.java
+
+
+*/
+
+
+
+package com.yowyob.template.application.service;
+
+import com.yowyob.template.domain.model.*;
+import com.yowyob.template.domain.ports.out.*;
+import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.FullOnboardingRequest;
+import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.UserProfileResponse;
+import com.yowyob.template.infrastructure.adapters.outbound.external.dto.RegisterRequest;
+import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.NewRoleRequest; // Assurez-vous d'importer ceci
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import reactor.core.publisher.Mono;
+
+import java.util.UUID;
+
+@Service
+@RequiredArgsConstructor
+public class OnboardingService {
+    private final AuthClientPort authClientPort;
+    private final BusinessActorRepositoryPort actorRepository;
+    private final OrganisationRepositoryPort organisationRepository;
+    // 1. Ajout du repository utilisateur pour récupérer les infos existantes
+    private final UserRepositoryPort userRepository; 
+
+    public Mono<UserProfileResponse> registerAndOnboard(FullOnboardingRequest request) {
+        RegisterRequest registerRequest = RegisterRequest.builder()
+                .email(request.getEmail())
+                .username(request.getUsername())
+                .password(request.getPassword())
+                .firstName(request.getFirstName())
+                .lastName(request.getLastName())
+                .phone(request.getPhone())
+                .service("LETS_GO")
+                .roles(java.util.List.of(request.getRoleType()))
+                .build();
+
+        return authClientPort.registerUser(registerRequest)
+                .flatMap(authResponse -> {
+                    var externalUser = authResponse.user();
+                    UUID userId = UUID.fromString(externalUser.id());
+                    User user = User.builder()
+                            .id(userId)
+                            .email(externalUser.email())
+                            .username(externalUser.username())
+                            .firstName(externalUser.firstName())
+                            .lastName(externalUser.lastName())
+                            .photoUri(externalUser.photoUri())
+                            .build();
+
+                    return onboardBusinessActor(user, request.getRoleType(), request.getOrganisationName(),
+                            request.getOrganisationDescription(), request.getPhone(), request.getTitle(), request.getAddress(), authResponse.accessToken(), authResponse.refreshToken());
+                });
+    }
+
+    public Mono<UserProfileResponse> becomeDriver(UUID userId, NewRoleRequest request, String accessToken) {
+        // Correction de la requête précédente incluse ici (passage de accessToken)
+        return ensureRoleNotExists(userId, "DRIVER", accessToken)
+                .then(resolveUserProfile(userId, request, accessToken))
+                .flatMap(user -> {
+                    // Si l'organisation n'a pas de nom, on en génère un par défaut basé sur le nom du user
+                    String orgName = request.getOrganisationName() != null && !request.getOrganisationName().isBlank() 
+                            ? request.getOrganisationName() 
+                            : "Transport " + user.getLastName();
+                    
+                    return onboardBusinessActor(user, "DRIVER", orgName,
+                        request.getOrganisationDescription(), 
+                        user.getPhone(), // On utilise le téléphone résolu (soit du request, soit du user existant)
+                        request.getTitle(), 
+                        request.getAddress(), 
+                        accessToken, 
+                        null);
+                });
+    }
+
+    public Mono<UserProfileResponse> becomeClient(UUID userId, NewRoleRequest request, String accessToken) {
+        return ensureRoleNotExists(userId, "CLIENT", accessToken)
+                .then(resolveUserProfile(userId, request, accessToken))
+                .flatMap(user -> {
+                    String orgName = request.getOrganisationName() != null && !request.getOrganisationName().isBlank()
+                            ? request.getOrganisationName()
+                            : "Espace Client " + user.getFirstName();
+
+                    return onboardBusinessActor(user, "CLIENT", orgName,
+                        request.getOrganisationDescription(), 
+                        user.getPhone(), 
+                        request.getTitle(), 
+                        request.getAddress(), 
+                        accessToken, 
+                        null);
+                });
+    }
+
+    // 2. Cette méthode récupère désormais le User réel depuis le service d'Auth
+    // et fusionne avec les données de la requête si elles sont présentes.
+    private Mono<User> resolveUserProfile(UUID userId, NewRoleRequest request, String accessToken) {
+        return userRepository.findById(userId, accessToken)
+                .map(existingUser -> {
+                    // Logique de fusion (Merge):
+                    // Si la requête contient une info, on l'utilise (mise à jour implicite).
+                    // Sinon, on garde l'info existante du profil.
+                    
+                    String firstName = (request.getFirstName() != null && !request.getFirstName().isBlank()) 
+                            ? request.getFirstName() 
+                            : existingUser.getFirstName();
+
+                    String lastName = (request.getLastName() != null && !request.getLastName().isBlank()) 
+                            ? request.getLastName() 
+                            : existingUser.getLastName();
+
+                    String email = (request.getEmail() != null && !request.getEmail().isBlank()) 
+                            ? request.getEmail() 
+                            : existingUser.getEmail();
+                    
+                    String phone = (request.getPhone() != null && !request.getPhone().isBlank())
+                            ? request.getPhone()
+                            : existingUser.getPhone();
+
+                    // On retourne un objet User mis à jour (mémoire) pour la création de l'acteur
+                    return User.builder()
+                            .id(userId)
+                            .email(email)
+                            .firstName(firstName)
+                            .lastName(lastName)
+                            .phone(phone) // Assurez-vous que le modèle User a bien ce champ
+                            .build();
+                });
+    }
+
+    private Mono<Void> ensureRoleNotExists(UUID userId, String roleType, String accessToken) {
+        return actorRepository.findByUserId(userId, accessToken)
+                .filter(actor -> roleType.equalsIgnoreCase(actor.getRoleType()))
+                .hasElement()
+                .flatMap(exists -> exists
+                        ? Mono.error(new IllegalStateException("User already has role: " + roleType))
+                        : Mono.empty());
+    }
+
+    private Mono<UserProfileResponse> onboardBusinessActor(User user, String roleType, String orgName, String orgDesc, String phone, String title, String addressString, String accessToken, String refreshToken) {
+        // Create BusinessActor using the user details we merged earlier
+        BusinessActor actor;
+        if ("DRIVER".equalsIgnoreCase(roleType)) {
+            actor = DriverRole.builder()
+                    .userId(user.getId())
+                    .displayName(user.getFirstName() + " " + user.getLastName())
+                    .emailAddress(user.getEmail())
+                    .phoneNumber(phone) // On passe le téléphone ici
+                    .build();
+        } else {
+            actor = ClientRole.builder()
+                    .userId(user.getId())
+                    .displayName(user.getFirstName() + " " + user.getLastName())
+                    .emailAddress(user.getEmail())
+                    .phoneNumber(phone)
+                    .build();
+        }
+
+        return actorRepository.save(actor, accessToken)
+                .flatMap(savedActor -> {
+                    OrganisationBuilder builder = new OrganisationBuilder()
+                            .withName(orgName)
+                            .withActorId(savedActor.getId());
+
+                    if (savedActor instanceof DriverRole) {
+                        builder.asDriver();
+                    } else {
+                        builder.asClient();
+                    }
+
+                    Organisation organisation = builder.build();
+                    organisation.setDescription(orgDesc);
+                    organisation.setEmail(user.getEmail());
+                    organisation.setService(savedActor instanceof DriverRole ? "LETS_GO" : "IT_SERVICES");
+                    
+                    // Si une adresse est fournie dans la requête, on pourrait l'ajouter ici
+                    // Note: L'entité OrganisationBuilder actuelle ne gère pas directement l'adresse string simple,
+                    // il faudrait idéalement créer un objet Address si addressString n'est pas null.
+
+                    return organisationRepository.save(organisation, accessToken)
+                            .map(savedOrg -> UserProfileResponse.builder()
+                                    .accessToken(accessToken)
+                                    .refreshToken(refreshToken)
+                                    .user(user)
+                                    .actor(savedActor)
+                                    .organisation(savedOrg)
+                                    .build());
+                });
+    }
+}// END OF FILE: src/main/java/com/yowyob/template/application/service/OnboardingService.java
 
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/application/service/OrganisationService.java
 
@@ -3072,7 +3264,7 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-import java.sql.Timestamp;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Slf4j
@@ -3093,12 +3285,11 @@ public class ReactionService implements ReactionUseCase {
                         return Mono.error(new IllegalArgumentException("Target " + targetId + " of type " + targetType + " does not exist"));
                     }
                     Reaction reaction = Reaction.builder()
-                            .id(UUID.randomUUID())
                             .actorId(actorId)
                             .targetId(targetId)
                             .targetType(targetType)
                             .type(type)
-                            .createdAt(new Timestamp(System.currentTimeMillis()))
+                            .createdAt(OffsetDateTime.now())
                             .build();
                     return repository.save(reaction);
                 });
@@ -3140,7 +3331,7 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-import java.sql.Timestamp;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Slf4j
@@ -3159,8 +3350,7 @@ public class ReviewService implements ReviewUseCase {
                     if (!exists) {
                         return Mono.error(new IllegalArgumentException("Subject " + review.getSubjectId() + " does not exist"));
                     }
-                    review.setId(UUID.randomUUID());
-                    review.setCreatedAt(new Timestamp(System.currentTimeMillis()));
+                    review.setCreatedAt(OffsetDateTime.now());
                     return repository.save(review);
                 });
     }
@@ -3333,18 +3523,18 @@ public class UserService implements UserUseCase {
     private final UserRepositoryPort userRepository;
 
     @Override
-    public Mono<User> updateUserProfile(UUID id, User user) {
-        return userRepository.updateUser(id, user);
+    public Mono<User> updateUserProfile(UUID id, User user, String jwtToken) {
+        return userRepository.updateUser(id, user, jwtToken);
     }
 
     @Override
-    public Mono<Void> changePassword(UUID id, String currentPassword, String newPassword) {
-        return userRepository.updatePassword(id, currentPassword, newPassword);
+    public Mono<Void> changePassword(UUID id, String currentPassword, String newPassword, String jwtToken) {
+        return userRepository.updatePassword(id, currentPassword, newPassword, jwtToken);
     }
 
     @Override
-    public Mono<User> updateProfilePicture(UUID id, FilePart file) {
-        return userRepository.updatePicture(id, file);
+    public Mono<User> updateProfilePicture(UUID id, FilePart file, String jwtToken) {
+        return userRepository.updatePicture(id, file, jwtToken);
     }
 }
 // END OF FILE: src/main/java/com/yowyob/template/application/service/UserService.java
@@ -4174,7 +4364,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.sql.Timestamp;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Getter
@@ -4188,7 +4378,7 @@ public class Reaction {
     private UUID targetId;
     private SubjectType targetType;
     private ReactionType type;
-    private Timestamp createdAt;
+    private OffsetDateTime createdAt;
 }
 // END OF FILE: src/main/java/com/yowyob/template/domain/model/Reaction.java
 
@@ -4196,6 +4386,13 @@ public class Reaction {
 
 package com.yowyob.template.domain.model;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
+@Schema(
+        name = "ReactionType",
+        type = "string",
+        enumAsRef = true
+)
 public enum ReactionType {
     LIKE, 
     DISLIKE, 
@@ -4296,7 +4493,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.sql.Timestamp;
+import java.time.OffsetDateTime;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -4314,7 +4511,7 @@ public class Review implements Reactable {
     private Integer rating;
     private String comment;
     private Boolean isVerifiedPurchase;
-    private Timestamp createdAt;
+    private OffsetDateTime createdAt;
 
     @Override
     public UUID getReactableId() {
@@ -4381,6 +4578,13 @@ public class Settings {
 
 package com.yowyob.template.domain.model;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
+@Schema(
+        name = "SubjectType",
+        type = "string",
+        enumAsRef = true
+)
 public enum SubjectType {
     PRODUCT,
     DRIVER,
@@ -4674,9 +4878,9 @@ import reactor.core.publisher.Mono;
 import java.util.UUID;
 
 public interface UserUseCase {
-    Mono<User> updateUserProfile(UUID id, User user);
-    Mono<Void> changePassword(UUID id, String currentPassword, String newPassword);
-    Mono<User> updateProfilePicture(UUID id, FilePart file);
+    Mono<User> updateUserProfile(UUID id, User user, String jwtToken);
+    Mono<Void> changePassword(UUID id, String currentPassword, String newPassword, String jwtToken);
+    Mono<User> updateProfilePicture(UUID id, FilePart file, String jwtToken);
 }
 // END OF FILE: src/main/java/com/yowyob/template/domain/ports/in/UserUseCase.java
 
@@ -4984,9 +5188,9 @@ public interface UserRepositoryPort {
     Mono<User> findById(UUID id);
     Mono<User> findById(UUID id, String jwtToken);
     Mono<User> findByEmail(String email);
-    Mono<User> updateUser(UUID id, User user);
-    Mono<Void> updatePassword(UUID id, String currentPassword, String newPassword);
-    Mono<User> updatePicture(UUID id, FilePart file);
+    Mono<User> updateUser(UUID id, User user, String jwtToken);
+    Mono<Void> updatePassword(UUID id, String currentPassword, String newPassword, String jwtToken);
+    Mono<User> updatePicture(UUID id, FilePart file, String jwtToken);
 }
 // END OF FILE: src/main/java/com/yowyob/template/domain/ports/out/UserRepositoryPort.java
 
@@ -6187,15 +6391,27 @@ package com.yowyob.template.infrastructure.adapters.inbound.rest.dto;
 
 import com.yowyob.template.domain.model.ReactionType;
 import com.yowyob.template.domain.model.SubjectType;
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
 import java.util.UUID;
 
 @Data
 public class ReactionRequest {
-    private UUID actorId;
     private UUID targetId;
+    @Schema(
+            implementation = SubjectType.class,
+            enumAsRef = true,
+            type = "string",
+            allowableValues = {"PRODUCT", "DRIVER", "CLIENT", "ORGANISATION", "VEHICLE", "PLATFORM", "REVIEW"}
+    )
     private SubjectType targetType;
+    @Schema(
+            implementation = ReactionType.class,
+            enumAsRef = true,
+            type = "string",
+            allowableValues = {"LIKE", "DISLIKE", "LOVE", "ANGRY", "SAD", "LAUGH", "CELEBRATE"}
+    )
     private ReactionType type;
 }
 // END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/dto/ReactionRequest.java
@@ -6211,7 +6427,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.sql.Timestamp;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Data
@@ -6224,7 +6440,7 @@ public class ReactionResponse {
     private UUID targetId;
     private SubjectType targetType;
     private ReactionType type;
-    private Timestamp createdAt;
+    private OffsetDateTime createdAt;
 }
 // END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/dto/ReactionResponse.java
 
@@ -6359,6 +6575,7 @@ public record UpdatePlanningRequest(
 package com.yowyob.template.infrastructure.adapters.inbound.rest.dto;
 
 import com.yowyob.template.domain.model.SubjectType;
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -6371,9 +6588,13 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ReviewRequest {
-    private UUID rideId;
-    private UUID authorId;
     private UUID subjectId;
+    @Schema(
+            implementation = SubjectType.class,
+            enumAsRef = true,
+            type = "string",
+            allowableValues = {"PRODUCT", "DRIVER", "CLIENT", "ORGANISATION", "VEHICLE", "PLATFORM", "REVIEW"}
+    )
     private SubjectType subjectType;
     private Integer rating;
     private String comment;
@@ -6384,17 +6605,16 @@ public class ReviewRequest {
 
 package com.yowyob.template.infrastructure.adapters.inbound.rest.dto;
 
-import java.sql.Timestamp;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 public class ReviewResponse {
     private UUID id;
-    private UUID rideId;
     private UUID authorId;
     private UUID subjectId;
     private Integer rating;
     private String comment;
-    private Timestamp createdAt;
+    private OffsetDateTime createdAt;
 
     public UUID getId() {
         return id;
@@ -6402,14 +6622,6 @@ public class ReviewResponse {
 
     public void setId(UUID id) {
         this.id = id;
-    }
-
-    public UUID getRideId() {
-        return rideId;
-    }
-
-    public void setRideId(UUID rideId) {
-        this.rideId = rideId;
     }
 
     public UUID getAuthorId() {
@@ -6444,11 +6656,11 @@ public class ReviewResponse {
         this.comment = comment;
     }
 
-    public Timestamp getCreatedAt() {
+    public OffsetDateTime getCreatedAt() {
         return createdAt;
     }
 
-    public void setCreatedAt(Timestamp createdAt) {
+    public void setCreatedAt(OffsetDateTime createdAt) {
         this.createdAt = createdAt;
     }
 }
@@ -6512,6 +6724,25 @@ public record SettingsResponse(
     Timestamp createdAt,
     Timestamp updatedAt
 ) {}// END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/dto/SettingsResponse.java
+
+//---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/dto/UpdateReviewRequest.java
+
+package com.yowyob.template.infrastructure.adapters.inbound.rest.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class UpdateReviewRequest {
+    private Integer rating;
+    private String comment;
+}
+// END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/dto/UpdateReviewRequest.java
 
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/dto/UpdateUserProfileRequest.java
 
@@ -6816,9 +7047,14 @@ import com.yowyob.template.domain.model.Review;
 import com.yowyob.template.domain.model.SubjectType;
 import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.ReactionRequest;
 import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.ReviewRequest;
+import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.UpdateReviewRequest;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.core.OAuth2AuthenticatedPrincipal;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -6837,20 +7073,28 @@ public class SocialController {
 
     @PostMapping("/reactions")
     @Operation(summary = "Ajouter une réaction", description = "Ajoute une réaction (Like, Love, etc.) à une cible donnée (Produit, Driver, etc.).")
-    public Mono<Reaction> addReaction(@RequestBody ReactionRequest request) {
-        return reactionService.addReaction(
-                request.getActorId(),
-                request.getTargetId(),
-                request.getTargetType(),
-                request.getType()
-        );
+    public Mono<Reaction> addReaction(
+            @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+            @Valid @RequestBody ReactionRequest request
+    ) {
+        UUID actorId = UUID.fromString(principal.getAttribute("sub"));
+        return validateReactionRequest(request)
+                .then(reactionService.addReaction(
+                        actorId,
+                        request.getTargetId(),
+                        request.getTargetType(),
+                        request.getType()
+                ));
     }
 
     @DeleteMapping("/reactions")
     @Operation(summary = "Supprimer une réaction", description = "Supprime une réaction existante.")
-    public Mono<Void> removeReaction(@RequestParam UUID actorId,
-                                     @RequestParam UUID targetId,
-                                     @RequestParam ReactionType type) {
+    public Mono<Void> removeReaction(
+            @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+            @RequestParam UUID targetId,
+            @RequestParam ReactionType type
+    ) {
+        UUID actorId = UUID.fromString(principal.getAttribute("sub"));
         return reactionService.removeReaction(actorId, targetId, type);
     }
 
@@ -6865,15 +7109,22 @@ public class SocialController {
 
     @PostMapping("/reviews")
     @Operation(summary = "Ajouter un avis", description = "Permet de laisser un avis (Note + Commentaire) sur un sujet.")
-    public Mono<Review> addReview(@RequestBody ReviewRequest request) {
-        Review review = Review.builder()
-                .authorId(request.getAuthorId())
-                .subjectId(request.getSubjectId())
-                .subjectType(request.getSubjectType())
-                .rating(request.getRating())
-                .comment(request.getComment())
-                .build();
-        return reviewService.createReview(review);
+    public Mono<Review> addReview(
+            @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+            @Valid @RequestBody ReviewRequest request
+    ) {
+        UUID authorId = UUID.fromString(principal.getAttribute("sub"));
+        return validateCreateReviewRequest(request)
+                .then(Mono.defer(() -> {
+                    Review review = Review.builder()
+                            .authorId(authorId)
+                            .subjectId(request.getSubjectId())
+                            .subjectType(request.getSubjectType())
+                            .rating(request.getRating())
+                            .comment(request.getComment())
+                            .build();
+                    return reviewService.createReview(review);
+                }));
     }
 
     @GetMapping("/reviews/{id}")
@@ -6891,12 +7142,54 @@ public class SocialController {
 
     @PutMapping("/reviews/{id}")
     @Operation(summary = "Mettre à jour un avis", description = "Modifie la note ou le commentaire d'un avis existant.")
-    public Mono<Review> updateReview(@PathVariable UUID id, @RequestBody ReviewRequest request) {
-        Review review = Review.builder()
-                .rating(request.getRating())
-                .comment(request.getComment())
-                .build();
-        return reviewService.updateReview(id, review);
+    public Mono<Review> updateReview(@PathVariable UUID id, @Valid @RequestBody UpdateReviewRequest request) {
+        return validateUpdateReviewRequest(request)
+                .then(Mono.defer(() -> {
+                    Review review = Review.builder()
+                            .rating(request.getRating())
+                            .comment(request.getComment())
+                            .build();
+                    return reviewService.updateReview(id, review);
+                }));
+    }
+
+    private Mono<Void> validateReactionRequest(ReactionRequest request) {
+        if (request.getTargetId() == null) {
+            return Mono.error(new IllegalArgumentException("targetId est obligatoire"));
+        }
+        if (request.getTargetType() == null) {
+            return Mono.error(new IllegalArgumentException("targetType est obligatoire"));
+        }
+        if (request.getType() == null) {
+            return Mono.error(new IllegalArgumentException("type est obligatoire"));
+        }
+        return Mono.empty();
+    }
+
+    private Mono<Void> validateCreateReviewRequest(ReviewRequest request) {
+        if (request.getSubjectId() == null) {
+            return Mono.error(new IllegalArgumentException("subjectId est obligatoire"));
+        }
+        if (request.getSubjectType() == null) {
+            return Mono.error(new IllegalArgumentException("subjectType est obligatoire"));
+        }
+        if (request.getRating() == null) {
+            return Mono.error(new IllegalArgumentException("rating est obligatoire"));
+        }
+        if (request.getRating() < 1 || request.getRating() > 5) {
+            return Mono.error(new IllegalArgumentException("rating doit être entre 1 et 5"));
+        }
+        return Mono.empty();
+    }
+
+    private Mono<Void> validateUpdateReviewRequest(UpdateReviewRequest request) {
+        if (request.getRating() == null && (request.getComment() == null || request.getComment().isBlank())) {
+            return Mono.error(new IllegalArgumentException("rating ou comment est obligatoire"));
+        }
+        if (request.getRating() != null && (request.getRating() < 1 || request.getRating() > 5)) {
+            return Mono.error(new IllegalArgumentException("rating doit être entre 1 et 5"));
+        }
+        return Mono.empty();
     }
 
     @DeleteMapping("/reviews/{id}")
@@ -6921,10 +7214,14 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.parameters.RequestBody;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.multipart.FilePart;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.core.OAuth2AuthenticatedPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
 import java.util.UUID;
@@ -6937,28 +7234,46 @@ public class UserController {
 
     private final UserUseCase userUseCase;
 
-    @PutMapping("/{id}")
+    @PutMapping
     @Operation(summary = "Mettre à jour le profil utilisateur", description = "Met à jour le prénom, nom ou téléphone.")
-    public Mono<User> updateProfile(@PathVariable UUID id, @org.springframework.web.bind.annotation.RequestBody UpdateUserProfileRequest request) {
+    public Mono<User> updateProfile(
+            @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+            ServerWebExchange exchange,
+            @org.springframework.web.bind.annotation.RequestBody UpdateUserProfileRequest request
+    ) {
+        UUID id = UUID.fromString(principal.getAttribute("sub"));
         User user = User.builder()
                 .firstName(request.getFirstName())
                 .lastName(request.getLastName())
                 .phone(request.getPhone())
                 .build();
-        return userUseCase.updateUserProfile(id, user);
+        String authHeader = exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
+        return userUseCase.updateUserProfile(id, user, authHeader);
     }
 
-    @PutMapping("/{id}/password")
+    @PutMapping("/password")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(summary = "Changer le mot de passe", description = "Met à jour le mot de passe utilisateur. Nécessite l'ancien mot de passe.")
-    public Mono<Void> changePassword(@PathVariable UUID id, @org.springframework.web.bind.annotation.RequestBody ChangePasswordRequest request) {
-        return userUseCase.changePassword(id, request.getCurrentPassword(), request.getNewPassword());
+    public Mono<Void> changePassword(
+            @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+            ServerWebExchange exchange,
+            @org.springframework.web.bind.annotation.RequestBody ChangePasswordRequest request
+    ) {
+        UUID id = UUID.fromString(principal.getAttribute("sub"));
+        String authHeader = exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
+        return userUseCase.changePassword(id, request.getCurrentPassword(), request.getNewPassword(), authHeader);
     }
 
-    @PostMapping(value = "/{id}/picture", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PostMapping(value = "/picture", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @Operation(summary = "Mettre à jour la photo de profil", description = "Télécharge ou remplace la photo de profil de l'utilisateur.")
-    public Mono<User> updateProfilePicture(@PathVariable UUID id, @RequestPart("file") FilePart file) {
-        return userUseCase.updateProfilePicture(id, file);
+    public Mono<User> updateProfilePicture(
+            @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+            ServerWebExchange exchange,
+            @RequestPart("file") FilePart file
+    ) {
+        UUID id = UUID.fromString(principal.getAttribute("sub"));
+        String authHeader = exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
+        return userUseCase.updateProfilePicture(id, file, authHeader);
     }
 }
 // END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/UserController.java
@@ -8369,42 +8684,54 @@ public class UserExternalAdapter implements UserRepositoryPort {
     }
 
     @Override
-    public Mono<User> updateUser(UUID id, User user) {
+    public Mono<User> updateUser(UUID id, User user, String jwtToken) {
         UpdateUserExternalRequest request = new UpdateUserExternalRequest(
                 user.getFirstName(),
                 user.getLastName(),
                 user.getPhone()
         );
-        return webClientBuilder.baseUrl(authServiceUrl).build()
+        var requestSpec = webClientBuilder.baseUrl(authServiceUrl).build()
                 .put()
                 .uri("/api/users/{id}", id)
-                .bodyValue(request)
-                .retrieve()
+                .bodyValue(request);
+        String authHeader = toAuthorizationHeaderValue(jwtToken);
+        if (authHeader != null) {
+            requestSpec.header("Authorization", authHeader);
+        }
+        return requestSpec.retrieve()
                 .bodyToMono(TraMaSysUserResponse.class)
                 .map(this::mapToDomain);
     }
 
     @Override
-    public Mono<Void> updatePassword(UUID id, String currentPassword, String newPassword) {
+    public Mono<Void> updatePassword(UUID id, String currentPassword, String newPassword, String jwtToken) {
         ChangePasswordExternalRequest request = new ChangePasswordExternalRequest(currentPassword, newPassword);
-        return webClientBuilder.baseUrl(authServiceUrl).build()
+        var requestSpec = webClientBuilder.baseUrl(authServiceUrl).build()
                 .put()
                 .uri("/api/users/{id}/password", id)
-                .bodyValue(request)
-                .retrieve()
+                .bodyValue(request);
+        String authHeader = toAuthorizationHeaderValue(jwtToken);
+        if (authHeader != null) {
+            requestSpec.header("Authorization", authHeader);
+        }
+        return requestSpec.retrieve()
                 .bodyToMono(Void.class);
     }
 
     @Override
-    public Mono<User> updatePicture(UUID id, FilePart file) {
+    public Mono<User> updatePicture(UUID id, FilePart file, String jwtToken) {
         MultipartBodyBuilder builder = new MultipartBodyBuilder();
         builder.part("file", file);
-        return webClientBuilder.baseUrl(authServiceUrl).build()
+        var requestSpec = webClientBuilder.baseUrl(authServiceUrl).build()
                 .post()
                 .uri("/api/users/{id}/picture", id)
                 .contentType(MediaType.MULTIPART_FORM_DATA)
-                .body(BodyInserters.fromMultipartData(builder.build()))
-                .retrieve()
+                .body(BodyInserters.fromMultipartData(builder.build()));
+        String authHeader = toAuthorizationHeaderValue(jwtToken);
+        if (authHeader != null) {
+            requestSpec.header("Authorization", authHeader);
+        }
+        return requestSpec.retrieve()
                 .bodyToMono(TraMaSysUserResponse.class)
                 .map(this::mapToDomain);
     }
@@ -8750,7 +9077,7 @@ import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.relational.core.mapping.Table;
 
-import java.sql.Timestamp;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Data
@@ -8765,7 +9092,7 @@ public class ReactionEntity {
     private UUID targetId;
     private SubjectType targetType;
     private ReactionType type;
-    private Timestamp createdAt;
+    private OffsetDateTime createdAt;
 }
 // END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/outbound/persistence/entity/ReactionEntity.java
 
@@ -8781,7 +9108,7 @@ import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.relational.core.mapping.Table;
 
-import java.sql.Timestamp;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Data
@@ -8792,13 +9119,12 @@ import java.util.UUID;
 public class ReviewEntity {
     @Id
     private UUID id;
-    private UUID rideId;
     private UUID authorId;
     private UUID subjectId;
     private SubjectType subjectType;
     private Integer rating;
     private String comment;
-    private Timestamp createdAt;
+    private OffsetDateTime createdAt;
 }
 // END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/outbound/persistence/entity/ReviewEntity.java
 

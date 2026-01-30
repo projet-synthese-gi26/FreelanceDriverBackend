@@ -8,7 +8,7 @@ import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.relational.core.mapping.Table;
 
-import java.sql.Timestamp;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Data
@@ -19,11 +19,10 @@ import java.util.UUID;
 public class ReviewEntity {
     @Id
     private UUID id;
-    private UUID rideId;
     private UUID authorId;
     private UUID subjectId;
     private SubjectType subjectType;
     private Integer rating;
     private String comment;
-    private Timestamp createdAt;
+    private OffsetDateTime createdAt;
 }

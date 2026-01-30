@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.relational.core.mapping.Table;
 
-import java.sql.Timestamp;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Data
@@ -24,5 +24,5 @@ public class ReactionEntity {
     private UUID targetId;
     private SubjectType targetType;
     private ReactionType type;
-    private Timestamp createdAt;
+    private OffsetDateTime createdAt;
 }

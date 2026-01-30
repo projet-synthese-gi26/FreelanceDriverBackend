@@ -72,42 +72,54 @@ public class UserExternalAdapter implements UserRepositoryPort {
     }
 
     @Override
-    public Mono<User> updateUser(UUID id, User user) {
+    public Mono<User> updateUser(UUID id, User user, String jwtToken) {
         UpdateUserExternalRequest request = new UpdateUserExternalRequest(
                 user.getFirstName(),
                 user.getLastName(),
                 user.getPhone()
         );
-        return webClientBuilder.baseUrl(authServiceUrl).build()
+        var requestSpec = webClientBuilder.baseUrl(authServiceUrl).build()
                 .put()
                 .uri("/api/users/{id}", id)
-                .bodyValue(request)
-                .retrieve()
+                .bodyValue(request);
+        String authHeader = toAuthorizationHeaderValue(jwtToken);
+        if (authHeader != null) {
+            requestSpec.header("Authorization", authHeader);
+        }
+        return requestSpec.retrieve()
                 .bodyToMono(TraMaSysUserResponse.class)
                 .map(this::mapToDomain);
     }
 
     @Override
-    public Mono<Void> updatePassword(UUID id, String currentPassword, String newPassword) {
+    public Mono<Void> updatePassword(UUID id, String currentPassword, String newPassword, String jwtToken) {
         ChangePasswordExternalRequest request = new ChangePasswordExternalRequest(currentPassword, newPassword);
-        return webClientBuilder.baseUrl(authServiceUrl).build()
+        var requestSpec = webClientBuilder.baseUrl(authServiceUrl).build()
                 .put()
                 .uri("/api/users/{id}/password", id)
-                .bodyValue(request)
-                .retrieve()
+                .bodyValue(request);
+        String authHeader = toAuthorizationHeaderValue(jwtToken);
+        if (authHeader != null) {
+            requestSpec.header("Authorization", authHeader);
+        }
+        return requestSpec.retrieve()
                 .bodyToMono(Void.class);
     }
 
     @Override
-    public Mono<User> updatePicture(UUID id, FilePart file) {
+    public Mono<User> updatePicture(UUID id, FilePart file, String jwtToken) {
         MultipartBodyBuilder builder = new MultipartBodyBuilder();
         builder.part("file", file);
-        return webClientBuilder.baseUrl(authServiceUrl).build()
+        var requestSpec = webClientBuilder.baseUrl(authServiceUrl).build()
                 .post()
                 .uri("/api/users/{id}/picture", id)
                 .contentType(MediaType.MULTIPART_FORM_DATA)
-                .body(BodyInserters.fromMultipartData(builder.build()))
-                .retrieve()
+                .body(BodyInserters.fromMultipartData(builder.build()));
+        String authHeader = toAuthorizationHeaderValue(jwtToken);
+        if (authHeader != null) {
+            requestSpec.header("Authorization", authHeader);
+        }
+        return requestSpec.retrieve()
                 .bodyToMono(TraMaSysUserResponse.class)
                 .map(this::mapToDomain);
     }

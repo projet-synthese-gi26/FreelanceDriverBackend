@@ -8,9 +8,14 @@ import com.yowyob.template.domain.model.Review;
 import com.yowyob.template.domain.model.SubjectType;
 import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.ReactionRequest;
 import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.ReviewRequest;
+import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.UpdateReviewRequest;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.core.OAuth2AuthenticatedPrincipal;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -29,20 +34,28 @@ public class SocialController {
 
     @PostMapping("/reactions")
     @Operation(summary = "Ajouter une réaction", description = "Ajoute une réaction (Like, Love, etc.) à une cible donnée (Produit, Driver, etc.).")
-    public Mono<Reaction> addReaction(@RequestBody ReactionRequest request) {
-        return reactionService.addReaction(
-                request.getActorId(),
-                request.getTargetId(),
-                request.getTargetType(),
-                request.getType()
-        );
+    public Mono<Reaction> addReaction(
+            @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+            @Valid @RequestBody ReactionRequest request
+    ) {
+        UUID actorId = UUID.fromString(principal.getAttribute("sub"));
+        return validateReactionRequest(request)
+                .then(reactionService.addReaction(
+                        actorId,
+                        request.getTargetId(),
+                        request.getTargetType(),
+                        request.getType()
+                ));
     }
 
     @DeleteMapping("/reactions")
     @Operation(summary = "Supprimer une réaction", description = "Supprime une réaction existante.")
-    public Mono<Void> removeReaction(@RequestParam UUID actorId,
-                                     @RequestParam UUID targetId,
-                                     @RequestParam ReactionType type) {
+    public Mono<Void> removeReaction(
+            @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+            @RequestParam UUID targetId,
+            @RequestParam ReactionType type
+    ) {
+        UUID actorId = UUID.fromString(principal.getAttribute("sub"));
         return reactionService.removeReaction(actorId, targetId, type);
     }
 
@@ -57,15 +70,22 @@ public class SocialController {
 
     @PostMapping("/reviews")
     @Operation(summary = "Ajouter un avis", description = "Permet de laisser un avis (Note + Commentaire) sur un sujet.")
-    public Mono<Review> addReview(@RequestBody ReviewRequest request) {
-        Review review = Review.builder()
-                .authorId(request.getAuthorId())
-                .subjectId(request.getSubjectId())
-                .subjectType(request.getSubjectType())
-                .rating(request.getRating())
-                .comment(request.getComment())
-                .build();
-        return reviewService.createReview(review);
+    public Mono<Review> addReview(
+            @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+            @Valid @RequestBody ReviewRequest request
+    ) {
+        UUID authorId = UUID.fromString(principal.getAttribute("sub"));
+        return validateCreateReviewRequest(request)
+                .then(Mono.defer(() -> {
+                    Review review = Review.builder()
+                            .authorId(authorId)
+                            .subjectId(request.getSubjectId())
+                            .subjectType(request.getSubjectType())
+                            .rating(request.getRating())
+                            .comment(request.getComment())
+                            .build();
+                    return reviewService.createReview(review);
+                }));
     }
 
     @GetMapping("/reviews/{id}")
@@ -83,12 +103,54 @@ public class SocialController {
 
     @PutMapping("/reviews/{id}")
     @Operation(summary = "Mettre à jour un avis", description = "Modifie la note ou le commentaire d'un avis existant.")
-    public Mono<Review> updateReview(@PathVariable UUID id, @RequestBody ReviewRequest request) {
-        Review review = Review.builder()
-                .rating(request.getRating())
-                .comment(request.getComment())
-                .build();
-        return reviewService.updateReview(id, review);
+    public Mono<Review> updateReview(@PathVariable UUID id, @Valid @RequestBody UpdateReviewRequest request) {
+        return validateUpdateReviewRequest(request)
+                .then(Mono.defer(() -> {
+                    Review review = Review.builder()
+                            .rating(request.getRating())
+                            .comment(request.getComment())
+                            .build();
+                    return reviewService.updateReview(id, review);
+                }));
+    }
+
+    private Mono<Void> validateReactionRequest(ReactionRequest request) {
+        if (request.getTargetId() == null) {
+            return Mono.error(new IllegalArgumentException("targetId est obligatoire"));
+        }
+        if (request.getTargetType() == null) {
+            return Mono.error(new IllegalArgumentException("targetType est obligatoire"));
+        }
+        if (request.getType() == null) {
+            return Mono.error(new IllegalArgumentException("type est obligatoire"));
+        }
+        return Mono.empty();
+    }
+
+    private Mono<Void> validateCreateReviewRequest(ReviewRequest request) {
+        if (request.getSubjectId() == null) {
+            return Mono.error(new IllegalArgumentException("subjectId est obligatoire"));
+        }
+        if (request.getSubjectType() == null) {
+            return Mono.error(new IllegalArgumentException("subjectType est obligatoire"));
+        }
+        if (request.getRating() == null) {
+            return Mono.error(new IllegalArgumentException("rating est obligatoire"));
+        }
+        if (request.getRating() < 1 || request.getRating() > 5) {
+            return Mono.error(new IllegalArgumentException("rating doit être entre 1 et 5"));
+        }
+        return Mono.empty();
+    }
+
+    private Mono<Void> validateUpdateReviewRequest(UpdateReviewRequest request) {
+        if (request.getRating() == null && (request.getComment() == null || request.getComment().isBlank())) {
+            return Mono.error(new IllegalArgumentException("rating ou comment est obligatoire"));
+        }
+        if (request.getRating() != null && (request.getRating() < 1 || request.getRating() > 5)) {
+            return Mono.error(new IllegalArgumentException("rating doit être entre 1 et 5"));
+        }
+        return Mono.empty();
     }
 
     @DeleteMapping("/reviews/{id}")
