@@ -69,17 +69,6 @@ services:
       KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
 
-  stock-mock: # Vous pouvez commenter cette partie, vous n'en aurez pas besoin en production, mais laissez la pour ne pas avoir à modifier les configurations.
-    image: wiremock/wiremock:2.35.0
-    ports:
-      - "8081:8080"
-    command:
-      - "--root-dir"
-      - "/home/wiremock"
-      - "--verbose"
-      - "--global-response-templating"
-    volumes:
-      - ./wiremock:/home/wiremock
 
 volumes:
   postgres_data:
