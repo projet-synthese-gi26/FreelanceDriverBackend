@@ -3,6 +3,7 @@ DROP TABLE IF EXISTS products CASCADE;
 DROP TABLE IF EXISTS Review CASCADE;
 DROP TABLE IF EXISTS reactions CASCADE;
 DROP TABLE IF EXISTS Settings CASCADE;
+DROP TABLE IF EXISTS otp_verifications CASCADE;
 DROP TYPE IF EXISTS product_status CASCADE;
 DROP TYPE IF EXISTS trip_type CASCADE;
 
@@ -109,4 +110,15 @@ CREATE TABLE Settings (
     -- ... autres champs de préférences ...
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE
+);
+
+-- 5. TABLE OTP VERIFICATIONS
+
+CREATE TABLE otp_verifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email TEXT NOT NULL,
+    otp TEXT NOT NULL,
+    expires_at TIMESTAMP WITH TIME ZONE,
+    verified BOOLEAN DEFAULT false,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
