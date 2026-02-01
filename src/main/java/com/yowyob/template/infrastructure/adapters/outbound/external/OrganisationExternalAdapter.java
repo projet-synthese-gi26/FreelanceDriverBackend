@@ -52,19 +52,8 @@ public class OrganisationExternalAdapter implements OrganisationRepositoryPort {
 
     @Override
     public Mono<Organisation> findById(UUID id) {
-        return findById(id, null);
-    }
-
-    @Override
-    public Mono<Organisation> findById(UUID id, String jwtToken) {
-        var requestSpec = getClient().get()
-                .uri("/api/v1/organizations/{id}", id);
-
-        if (jwtToken != null && !jwtToken.isEmpty()) {
-            requestSpec.header("Authorization", "Bearer " + jwtToken);
-        }
-
-        Mono<ExternalOrganizationResponse> orgMono = requestSpec
+        Mono<ExternalOrganizationResponse> orgMono = getClient().get()
+                .uri("/api/v1/organizations/{id}", id)
                 .retrieve()
                 .bodyToMono(ExternalOrganizationResponse.class);
         return enrichOrganisation(orgMono);

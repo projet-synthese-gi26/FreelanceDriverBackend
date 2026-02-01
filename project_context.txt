@@ -1,5 +1,5 @@
 Project Context From: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre
-Generated On: sam. 31 janv. 2026 10:08:30 WAT
+Generated On: dim. 01 févr. 2026 16:00:53 WAT
 ===============================================
 Ignored Directory Patterns: .* node_modules vendor build dist target __pycache__ .next cache target storage
 Ignored File Patterns: *.log *.jar *.pdf *.class *.sqlite project_context.txt package-lock.json yarn.lock composer.lock *.ico pnpm-lock.yaml
@@ -5454,9 +5454,9 @@ public interface UserRepositoryPort {
     Mono<User> findById(UUID id);
     Mono<User> findById(UUID id, String jwtToken);
     Mono<User> findByEmail(String email);
-    Mono<User> updateUser(UUID id, User user, String jwtToken);
-    Mono<Void> updatePassword(UUID id, String currentPassword, String newPassword, String jwtToken);
-    Mono<User> updatePicture(UUID id, FilePart file, String jwtToken);
+    Mono<User> updateUser(UUID id, User user);
+    Mono<Void> updatePassword(UUID id, String currentPassword, String newPassword);
+    Mono<User> updatePicture(UUID id, FilePart file);
 }
 // END OF FILE: src/main/java/com/yowyob/template/domain/ports/out/UserRepositoryPort.java
 
@@ -6870,45 +6870,6 @@ public class RegisterInitResponse {
 
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/dto/request/CreateAnnonceRequest.java
 
-package com.yowyob.template.infrastructure.adapters.inbound.rest.dto.request;
-
-import com.yowyob.template.domain.model.TripType;
-import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.Future;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-
-import java.time.LocalTime;
-import java.time.OffsetDateTime;
-
-public record CreateAnnonceRequest(
-        @NotBlank String title,
-        @NotBlank String departureLocation,
-        @NotBlank String dropoffLocation,
-        @NotNull @Future
-        @Schema(type = "string", format = "date-time", example = "2026-01-28T16:30:00Z")
-        OffsetDateTime startDate,
-        @NotNull
-        @Schema(type = "string", pattern = "^\\d{2}:\\d{2}(:\\d{2})?$", example = "12:21:23")
-        LocalTime startTime,
-        @Schema(type = "string", format = "date-time", example = "2026-01-28T18:30:00Z")
-        OffsetDateTime endDate,
-        @Schema(type = "string", pattern = "^\\d{2}:\\d{2}(:\\d{2})?$", example = "18:30:00")
-        LocalTime endTime,
-        
-        @NotBlank String cost,
-
-        // Nouveaux champs
-        TripType tripType,
-        String meetupPoint,
-        String tripIntention,
-        String pricingMethod,
-
-        // Champs optionnels
-        String baggageInfo,
-        Boolean isNegotiable,
-        String paymentMethod
-) {}
 // END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/dto/request/CreateAnnonceRequest.java
 
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/dto/request/UpdateAnnonceRequest.java
@@ -7732,20 +7693,6 @@ public class AddressExternalAdapter implements AddressRepositoryPort {
         return webClientBuilder.baseUrl(orgServiceUrl).build();
     }
 
-     private String toAuthorizationHeaderValue(String jwtToken) {
-         if (jwtToken == null) {
-             return null;
-         }
-         String token = jwtToken.trim();
-         if (token.isEmpty()) {
-             return null;
-         }
-         if (token.regionMatches(true, 0, "Bearer ", 0, "Bearer ".length())) {
-             return token;
-         }
-         return "Bearer " + token;
-     }
-
     @Override
     public Mono<Address> save(Address address) {
         return save(address, null);
@@ -7775,9 +7722,8 @@ public class AddressExternalAdapter implements AddressRepositoryPort {
         var requestSpec = getClient().post()
                 .uri("/api/v1/addresses");
 
-        String authHeader = toAuthorizationHeaderValue(jwtToken);
-        if (authHeader != null) {
-            requestSpec.header("Authorization", authHeader);
+        if (jwtToken != null && !jwtToken.isEmpty()) {
+            requestSpec.header("Authorization", "Bearer " + jwtToken);
         }
 
         return requestSpec
@@ -7811,9 +7757,8 @@ public class AddressExternalAdapter implements AddressRepositoryPort {
         var requestSpec = getClient().put()
                 .uri("/api/v1/addresses/{id}", address.getId());
 
-        String authHeader = toAuthorizationHeaderValue(jwtToken);
-        if (authHeader != null) {
-            requestSpec.header("Authorization", authHeader);
+        if (jwtToken != null && !jwtToken.isEmpty()) {
+            requestSpec.header("Authorization", "Bearer " + jwtToken);
         }
 
         return requestSpec
@@ -7840,9 +7785,8 @@ public class AddressExternalAdapter implements AddressRepositoryPort {
                         .queryParam("addressableId", addressableId)
                         .build());
                         
-        String authHeader = toAuthorizationHeaderValue(jwtToken);
-        if (authHeader != null) {
-            requestSpec.header("Authorization", authHeader);
+        if (jwtToken != null && !jwtToken.isEmpty()) {
+            requestSpec.header("Authorization", "Bearer " + jwtToken);
         }
 
         return requestSpec
@@ -7861,9 +7805,8 @@ public class AddressExternalAdapter implements AddressRepositoryPort {
         var requestSpec = getClient().delete()
                 .uri("/api/v1/addresses/{id}", id);
 
-        String authHeader = toAuthorizationHeaderValue(jwtToken);
-        if (authHeader != null) {
-            requestSpec.header("Authorization", authHeader);
+        if (jwtToken != null && !jwtToken.isEmpty()) {
+            requestSpec.header("Authorization", "Bearer " + jwtToken);
         }
         
         return requestSpec
@@ -8248,20 +8191,6 @@ public class ContactExternalAdapter implements ContactRepositoryPort {
         return webClientBuilder.baseUrl(orgServiceUrl).build();
     }
 
-     private String toAuthorizationHeaderValue(String jwtToken) {
-         if (jwtToken == null) {
-             return null;
-         }
-         String token = jwtToken.trim();
-         if (token.isEmpty()) {
-             return null;
-         }
-         if (token.regionMatches(true, 0, "Bearer ", 0, "Bearer ".length())) {
-             return token;
-         }
-         return "Bearer " + token;
-     }
-
     @Override
     public Mono<Contact> save(Contact contact) {
         return save(contact, null);
@@ -8288,9 +8217,8 @@ public class ContactExternalAdapter implements ContactRepositoryPort {
         var requestSpec = getClient().post()
                 .uri("/api/v1/contacts");
 
-        String authHeader = toAuthorizationHeaderValue(jwtToken);
-        if (authHeader != null) {
-            requestSpec.header("Authorization", authHeader);
+        if (jwtToken != null && !jwtToken.isEmpty()) {
+            requestSpec.header("Authorization", "Bearer " + jwtToken);
         }
 
         return requestSpec
@@ -8321,9 +8249,8 @@ public class ContactExternalAdapter implements ContactRepositoryPort {
         var requestSpec = getClient().put()
                 .uri("/api/v1/contacts/{id}", contact.getId());
 
-        String authHeader = toAuthorizationHeaderValue(jwtToken);
-        if (authHeader != null) {
-            requestSpec.header("Authorization", authHeader);
+        if (jwtToken != null && !jwtToken.isEmpty()) {
+            requestSpec.header("Authorization", "Bearer " + jwtToken);
         }
 
         return requestSpec
@@ -8356,9 +8283,8 @@ public class ContactExternalAdapter implements ContactRepositoryPort {
                         .queryParam("contactableId", contactableId)
                         .build());
 
-        String authHeader = toAuthorizationHeaderValue(jwtToken);
-        if (authHeader != null) {
-            requestSpec.header("Authorization", authHeader);
+        if (jwtToken != null && !jwtToken.isEmpty()) {
+            requestSpec.header("Authorization", "Bearer " + jwtToken);
         }
 
         return requestSpec
@@ -8377,9 +8303,8 @@ public class ContactExternalAdapter implements ContactRepositoryPort {
         var requestSpec = getClient().delete()
                 .uri("/api/v1/contacts/{id}", id);
 
-        String authHeader = toAuthorizationHeaderValue(jwtToken);
-        if (authHeader != null) {
-            requestSpec.header("Authorization", authHeader);
+        if (jwtToken != null && !jwtToken.isEmpty()) {
+            requestSpec.header("Authorization", "Bearer " + jwtToken);
         }
 
         return requestSpec
@@ -8790,20 +8715,6 @@ public class OrganisationExternalAdapter implements OrganisationRepositoryPort {
         return webClientBuilder.baseUrl(orgServiceUrl).build();
     }
 
-     private String toAuthorizationHeaderValue(String jwtToken) {
-         if (jwtToken == null) {
-             return null;
-         }
-         String token = jwtToken.trim();
-         if (token.isEmpty()) {
-             return null;
-         }
-         if (token.regionMatches(true, 0, "Bearer ", 0, "Bearer ".length())) {
-             return token;
-         }
-         return "Bearer " + token;
-     }
-
     @Override
     public Mono<Organisation> save(Organisation organisation) {
         return save(organisation, null);
@@ -8815,9 +8726,8 @@ public class OrganisationExternalAdapter implements OrganisationRepositoryPort {
         var requestSpec = getClient().post()
                 .uri("/api/v1/organizations");
 
-        String authHeader = toAuthorizationHeaderValue(jwtToken);
-        if (authHeader != null) {
-            requestSpec.header("Authorization", authHeader);
+        if (jwtToken != null && !jwtToken.isEmpty()) {
+            requestSpec.header("Authorization", "Bearer " + jwtToken);
         }
 
         return requestSpec
@@ -8829,20 +8739,8 @@ public class OrganisationExternalAdapter implements OrganisationRepositoryPort {
 
     @Override
     public Mono<Organisation> findById(UUID id) {
-        return findById(id, null);
-    }
-
-    @Override
-    public Mono<Organisation> findById(UUID id, String jwtToken) {
-        var requestSpec = getClient().get()
-                .uri("/api/v1/organizations/{id}", id);
-
-        String authHeader = toAuthorizationHeaderValue(jwtToken);
-        if (authHeader != null) {
-            requestSpec.header("Authorization", authHeader);
-        }
-
-        Mono<ExternalOrganizationResponse> orgMono = requestSpec
+        Mono<ExternalOrganizationResponse> orgMono = getClient().get()
+                .uri("/api/v1/organizations/{id}", id)
                 .retrieve()
                 .bodyToMono(ExternalOrganizationResponse.class);
         return enrichOrganisation(orgMono);
@@ -8860,9 +8758,8 @@ public class OrganisationExternalAdapter implements OrganisationRepositoryPort {
                         .queryParam("actorId", actorId)
                         .build());
                         
-        String authHeader = toAuthorizationHeaderValue(jwtToken);
-        if (authHeader != null) {
-            requestSpec.header("Authorization", authHeader);
+        if (jwtToken != null && !jwtToken.isEmpty()) {
+            requestSpec.header("Authorization", "Bearer " + jwtToken);
         }
 
         return requestSpec
@@ -9061,20 +8958,6 @@ public class UserExternalAdapter implements UserRepositoryPort {
     @Value("${application.external.auth-service-url}")
     private String authServiceUrl;
 
-     private String toAuthorizationHeaderValue(String jwtToken) {
-         if (jwtToken == null) {
-             return null;
-         }
-         String token = jwtToken.trim();
-         if (token.isEmpty()) {
-             return null;
-         }
-         if (token.regionMatches(true, 0, "Bearer ", 0, "Bearer ".length())) {
-             return token;
-         }
-         return "Bearer " + token;
-     }
-
     @Override
     public Mono<User> findById(UUID id) {
         return findById(id, null);
@@ -9086,9 +8969,8 @@ public class UserExternalAdapter implements UserRepositoryPort {
                 .get()
                 .uri("/api/users/{id}", id);
 
-        String authHeader = toAuthorizationHeaderValue(jwtToken);
-        if (authHeader != null) {
-            requestSpec.header("Authorization", authHeader);
+        if (jwtToken != null && !jwtToken.isEmpty()) {
+            requestSpec.header("Authorization", "Bearer " + jwtToken);
         }
 
         return requestSpec
@@ -9108,54 +8990,42 @@ public class UserExternalAdapter implements UserRepositoryPort {
     }
 
     @Override
-    public Mono<User> updateUser(UUID id, User user, String jwtToken) {
+    public Mono<User> updateUser(UUID id, User user) {
         UpdateUserExternalRequest request = new UpdateUserExternalRequest(
                 user.getFirstName(),
                 user.getLastName(),
                 user.getPhone()
         );
-        var requestSpec = webClientBuilder.baseUrl(authServiceUrl).build()
+        return webClientBuilder.baseUrl(authServiceUrl).build()
                 .put()
                 .uri("/api/users/{id}", id)
-                .bodyValue(request);
-        String authHeader = toAuthorizationHeaderValue(jwtToken);
-        if (authHeader != null) {
-            requestSpec.header("Authorization", authHeader);
-        }
-        return requestSpec.retrieve()
+                .bodyValue(request)
+                .retrieve()
                 .bodyToMono(TraMaSysUserResponse.class)
                 .map(this::mapToDomain);
     }
 
     @Override
-    public Mono<Void> updatePassword(UUID id, String currentPassword, String newPassword, String jwtToken) {
+    public Mono<Void> updatePassword(UUID id, String currentPassword, String newPassword) {
         ChangePasswordExternalRequest request = new ChangePasswordExternalRequest(currentPassword, newPassword);
-        var requestSpec = webClientBuilder.baseUrl(authServiceUrl).build()
+        return webClientBuilder.baseUrl(authServiceUrl).build()
                 .put()
                 .uri("/api/users/{id}/password", id)
-                .bodyValue(request);
-        String authHeader = toAuthorizationHeaderValue(jwtToken);
-        if (authHeader != null) {
-            requestSpec.header("Authorization", authHeader);
-        }
-        return requestSpec.retrieve()
+                .bodyValue(request)
+                .retrieve()
                 .bodyToMono(Void.class);
     }
 
     @Override
-    public Mono<User> updatePicture(UUID id, FilePart file, String jwtToken) {
+    public Mono<User> updatePicture(UUID id, FilePart file) {
         MultipartBodyBuilder builder = new MultipartBodyBuilder();
         builder.part("file", file);
-        var requestSpec = webClientBuilder.baseUrl(authServiceUrl).build()
+        return webClientBuilder.baseUrl(authServiceUrl).build()
                 .post()
                 .uri("/api/users/{id}/picture", id)
                 .contentType(MediaType.MULTIPART_FORM_DATA)
-                .body(BodyInserters.fromMultipartData(builder.build()));
-        String authHeader = toAuthorizationHeaderValue(jwtToken);
-        if (authHeader != null) {
-            requestSpec.header("Authorization", authHeader);
-        }
-        return requestSpec.retrieve()
+                .body(BodyInserters.fromMultipartData(builder.build()))
+                .retrieve()
                 .bodyToMono(TraMaSysUserResponse.class)
                 .map(this::mapToDomain);
     }
@@ -10159,8 +10029,6 @@ public class SecurityConfig {
                         .pathMatchers(
                                 "/api/auth/login",
                                 "/api/v1/auth/register",
-                                "/api/v1/auth/register-init",
-                                "/api/v1/auth/verify-otp",
                                 "/api-docs/**",
                                 "/swagger-ui.html",
                                 "/webjars/**",
@@ -10767,21 +10635,20 @@ resilience4j:
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/resources/prod.application.yml
 
 server:
-  port: 8082
+  port: 8080  # Port pour le service
 
 spring:
   application:
-    name: freelance-driver
-    
+    name: freelance-driver  # Nom de l'application
   docker:
     compose:
-      enabled: false
+      enabled: false  # Désactiver Docker Compose
 
-  # POSTGRESQL (R2DBC)
+  # Configuration de la base de données PostgreSQL (R2DBC)
   r2dbc:
-    url: r2dbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:payment_db}
-    username: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:password}
+    url: r2dbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:freelance_db}  # Utilisation des variables d'environnement pour l'URL
+    username: ${DB_USERNAME:postgres}  # Nom d'utilisateur de la base de données
+    password: ${DB_PASSWORD:password}  # Mot de passe de la base de données
     pool:
       enabled: true
       initial-size: 1
@@ -10790,70 +10657,91 @@ spring:
       max-life-time: 10m
       acquire-retry: 3
       max-acquire-time: 30s
-      validation-query: SELECT 1
+      validation-query: SELECT 1  # Requête de validation de la connexion
+
   sql:
     init:
       mode: always
 
-  # REDIS CLUSTER 
+  mail:
+    host: ${SPRING_MAIL_HOST:smtp.gmail.com}
+    port: ${SPRING_MAIL_PORT:587}
+    username: ${SPRING_MAIL_USERNAME:mbognengj@gmail.com}
+    password: ${SPRING_MAIL_PASSWORD:fmpjyadvpepfvcws}
+    properties:
+      mail.smtp.auth: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH:true}
+      mail.smtp.starttls.enable: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE:true}
+      mail.smtp.starttls.required: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_REQUIRED:true}
+      mail.debug: ${SPRING_MAIL_PROPERTIES_MAIL_DEBUG:true}
+
+  # Configuration du cluster Redis
   data:
     redis:
-      password: ${REDIS_PASSWORD:password}
+      password: ${REDIS_PASSWORD:password}  # Mot de passe Redis (si applicable)
       cluster:
         nodes:
-          - ${REDIS_HOST:localhost}:7001
+          - ${REDIS_HOST:localhost}:7001  # Nœuds du cluster Redis
           - ${REDIS_HOST:localhost}:7002
           - ${REDIS_HOST:localhost}:7003
           - ${REDIS_HOST:localhost}:7004
           - ${REDIS_HOST:localhost}:7005
           - ${REDIS_HOST:localhost}:7006
 
-  # KAFKA 
+  # Configuration Kafka
   kafka:
-    bootstrap-servers: ${KAFKA_HOST:kafka}:${KAFKA_PORT:9092} 
+    bootstrap-servers: ${KAFKA_HOST:localhost}:${KAFKA_PORT:9092}  # Serveurs Kafka (utilise localhost par défaut)
     consumer:
-      auto-offset-reset: earliest
-      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      auto-offset-reset: earliest  # Réinitialiser l'offset au début en cas d'absence
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer  # Désérialiseur de clé (String)
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer  # Désérialiseur de valeur (JSON)
       properties:
-        spring.json.trusted.packages: "*"
+        spring.json.trusted.packages: "*"  # Autoriser tous les packages pour la désérialisation JSON
     producer:
-      key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer  # Sérialiseur de clé (String)
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer  # Sérialiseur de valeur (JSON)
 
-# CUSTOM CONFIG 
+  # Configuration de la sécurité (OAuth2 Resource Server)
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${JWK_SET_URI:https://auth-service.pynfi.com/.well-known/jwks.json}  # URL du JWK Set
+
+# CONFIGURATION PERSONNALISÉE
 application:
   external:
-    stock-service-url: http://${EXTERNAL_HOST:localhost}:8081
+    auth-service-url: ${AUTH_SERVICE_URL:https://auth-service.pynfi.com}  # URL du service d'authentification (variable d'environnement)
+    organization-service-url: ${ORGANIZATION_SERVICE_URL:https://organization-service.pynfi.com}  # URL du service Organisation
+    stock-service-url: http://${EXTERNAL_HOST:localhost}:8081  # URL du service Stock
 
   kafka:
     topics:
-      product-events: test-topic
+      product-events: test-topic  # Topic Kafka pour les événements de produit
 
+# CONFIGURATION DES ENDPOINTS DE GESTION (Actuator)
 management:
   endpoints:
     web:
       exposure:
-        include: ["health","info","prometheus"]
+        include: ["health", "info", "prometheus"]  # Activer les endpoints d'Actuator
   endpoint:
     health:
-      show-details: "always"
+      show-details: "always"  # Afficher les détails de l'état de santé
       probes:
-        enabled: true
+        enabled: true  # Activer les sondes de santé (probes)
   metrics:
     export:
       prometheus:
-        enabled: true
+        enabled: true  # Exporter les métriques Prometheus
 
-# RESILIENCE4J 
+# CONFIGURATION DE RESILIENCE4J (Circuit Breaker)
 resilience4j:
   circuitbreaker:
     instances:
       stock-service:
-        failureRateThreshold: 50
-        waitDurationInOpenState: 5s
-        slidingWindowSize: 5
-// END OF FILE: src/main/resources/prod.application.yml
+        failureRateThreshold: 50  # Seuil de taux d'échec pour ouvrir le circuit (50%)
+        waitDurationInOpenState: 5s  # Durée d'attente avant de tenter une nouvelle requête (5 secondes)
+        slidingWindowSize: 5  # Nombre de requêtes dans la fenêtre glissante// END OF FILE: src/main/resources/prod.application.yml
 
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/resources/schema.sql
 

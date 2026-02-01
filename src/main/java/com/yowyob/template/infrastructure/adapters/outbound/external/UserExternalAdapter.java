@@ -58,25 +58,14 @@ public class UserExternalAdapter implements UserRepositoryPort {
 
     @Override
     public Mono<User> updateUser(UUID id, User user) {
-        return updateUser(id, user, null);
-    }
-
-    @Override
-    public Mono<User> updateUser(UUID id, User user, String jwtToken) {
         UpdateUserExternalRequest request = new UpdateUserExternalRequest(
                 user.getFirstName(),
                 user.getLastName(),
                 user.getPhone()
         );
-        var requestSpec = webClientBuilder.baseUrl(authServiceUrl).build()
+        return webClientBuilder.baseUrl(authServiceUrl).build()
                 .put()
-                .uri("/api/users/{id}", id);
-
-        if (jwtToken != null && !jwtToken.isEmpty()) {
-            requestSpec.header("Authorization", "Bearer " + jwtToken);
-        }
-
-        return requestSpec
+                .uri("/api/users/{id}", id)
                 .bodyValue(request)
                 .retrieve()
                 .bodyToMono(TraMaSysUserResponse.class)
@@ -85,21 +74,10 @@ public class UserExternalAdapter implements UserRepositoryPort {
 
     @Override
     public Mono<Void> updatePassword(UUID id, String currentPassword, String newPassword) {
-        return updatePassword(id, currentPassword, newPassword, null);
-    }
-
-    @Override
-    public Mono<Void> updatePassword(UUID id, String currentPassword, String newPassword, String jwtToken) {
         ChangePasswordExternalRequest request = new ChangePasswordExternalRequest(currentPassword, newPassword);
-        var requestSpec = webClientBuilder.baseUrl(authServiceUrl).build()
+        return webClientBuilder.baseUrl(authServiceUrl).build()
                 .put()
-                .uri("/api/users/{id}/password", id);
-
-        if (jwtToken != null && !jwtToken.isEmpty()) {
-            requestSpec.header("Authorization", "Bearer " + jwtToken);
-        }
-
-        return requestSpec
+                .uri("/api/users/{id}/password", id)
                 .bodyValue(request)
                 .retrieve()
                 .bodyToMono(Void.class);
@@ -107,22 +85,11 @@ public class UserExternalAdapter implements UserRepositoryPort {
 
     @Override
     public Mono<User> updatePicture(UUID id, FilePart file) {
-        return updatePicture(id, file, null);
-    }
-
-    @Override
-    public Mono<User> updatePicture(UUID id, FilePart file, String jwtToken) {
         MultipartBodyBuilder builder = new MultipartBodyBuilder();
         builder.part("file", file);
-        var requestSpec = webClientBuilder.baseUrl(authServiceUrl).build()
+        return webClientBuilder.baseUrl(authServiceUrl).build()
                 .post()
-                .uri("/api/users/{id}/picture", id);
-
-        if (jwtToken != null && !jwtToken.isEmpty()) {
-            requestSpec.header("Authorization", "Bearer " + jwtToken);
-        }
-
-        return requestSpec
+                .uri("/api/users/{id}/picture", id)
                 .contentType(MediaType.MULTIPART_FORM_DATA)
                 .body(BodyInserters.fromMultipartData(builder.build()))
                 .retrieve()
