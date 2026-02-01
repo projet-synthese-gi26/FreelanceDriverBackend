@@ -26,20 +26,6 @@ public class ContactExternalAdapter implements ContactRepositoryPort {
         return webClientBuilder.baseUrl(orgServiceUrl).build();
     }
 
-     private String toAuthorizationHeaderValue(String jwtToken) {
-         if (jwtToken == null) {
-             return null;
-         }
-         String token = jwtToken.trim();
-         if (token.isEmpty()) {
-             return null;
-         }
-         if (token.regionMatches(true, 0, "Bearer ", 0, "Bearer ".length())) {
-             return token;
-         }
-         return "Bearer " + token;
-     }
-
     @Override
     public Mono<Contact> save(Contact contact) {
         return save(contact, null);
@@ -66,9 +52,8 @@ public class ContactExternalAdapter implements ContactRepositoryPort {
         var requestSpec = getClient().post()
                 .uri("/api/v1/contacts");
 
-        String authHeader = toAuthorizationHeaderValue(jwtToken);
-        if (authHeader != null) {
-            requestSpec.header("Authorization", authHeader);
+        if (jwtToken != null && !jwtToken.isEmpty()) {
+            requestSpec.header("Authorization", "Bearer " + jwtToken);
         }
 
         return requestSpec
@@ -99,9 +84,8 @@ public class ContactExternalAdapter implements ContactRepositoryPort {
         var requestSpec = getClient().put()
                 .uri("/api/v1/contacts/{id}", contact.getId());
 
-        String authHeader = toAuthorizationHeaderValue(jwtToken);
-        if (authHeader != null) {
-            requestSpec.header("Authorization", authHeader);
+        if (jwtToken != null && !jwtToken.isEmpty()) {
+            requestSpec.header("Authorization", "Bearer " + jwtToken);
         }
 
         return requestSpec
@@ -134,9 +118,8 @@ public class ContactExternalAdapter implements ContactRepositoryPort {
                         .queryParam("contactableId", contactableId)
                         .build());
 
-        String authHeader = toAuthorizationHeaderValue(jwtToken);
-        if (authHeader != null) {
-            requestSpec.header("Authorization", authHeader);
+        if (jwtToken != null && !jwtToken.isEmpty()) {
+            requestSpec.header("Authorization", "Bearer " + jwtToken);
         }
 
         return requestSpec
@@ -155,9 +138,8 @@ public class ContactExternalAdapter implements ContactRepositoryPort {
         var requestSpec = getClient().delete()
                 .uri("/api/v1/contacts/{id}", id);
 
-        String authHeader = toAuthorizationHeaderValue(jwtToken);
-        if (authHeader != null) {
-            requestSpec.header("Authorization", authHeader);
+        if (jwtToken != null && !jwtToken.isEmpty()) {
+            requestSpec.header("Authorization", "Bearer " + jwtToken);
         }
 
         return requestSpec

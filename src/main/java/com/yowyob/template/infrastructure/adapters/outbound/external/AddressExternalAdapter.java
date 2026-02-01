@@ -26,20 +26,6 @@ public class AddressExternalAdapter implements AddressRepositoryPort {
         return webClientBuilder.baseUrl(orgServiceUrl).build();
     }
 
-     private String toAuthorizationHeaderValue(String jwtToken) {
-         if (jwtToken == null) {
-             return null;
-         }
-         String token = jwtToken.trim();
-         if (token.isEmpty()) {
-             return null;
-         }
-         if (token.regionMatches(true, 0, "Bearer ", 0, "Bearer ".length())) {
-             return token;
-         }
-         return "Bearer " + token;
-     }
-
     @Override
     public Mono<Address> save(Address address) {
         return save(address, null);
@@ -69,9 +55,8 @@ public class AddressExternalAdapter implements AddressRepositoryPort {
         var requestSpec = getClient().post()
                 .uri("/api/v1/addresses");
 
-        String authHeader = toAuthorizationHeaderValue(jwtToken);
-        if (authHeader != null) {
-            requestSpec.header("Authorization", authHeader);
+        if (jwtToken != null && !jwtToken.isEmpty()) {
+            requestSpec.header("Authorization", "Bearer " + jwtToken);
         }
 
         return requestSpec
@@ -105,9 +90,8 @@ public class AddressExternalAdapter implements AddressRepositoryPort {
         var requestSpec = getClient().put()
                 .uri("/api/v1/addresses/{id}", address.getId());
 
-        String authHeader = toAuthorizationHeaderValue(jwtToken);
-        if (authHeader != null) {
-            requestSpec.header("Authorization", authHeader);
+        if (jwtToken != null && !jwtToken.isEmpty()) {
+            requestSpec.header("Authorization", "Bearer " + jwtToken);
         }
 
         return requestSpec
@@ -134,9 +118,8 @@ public class AddressExternalAdapter implements AddressRepositoryPort {
                         .queryParam("addressableId", addressableId)
                         .build());
                         
-        String authHeader = toAuthorizationHeaderValue(jwtToken);
-        if (authHeader != null) {
-            requestSpec.header("Authorization", authHeader);
+        if (jwtToken != null && !jwtToken.isEmpty()) {
+            requestSpec.header("Authorization", "Bearer " + jwtToken);
         }
 
         return requestSpec
@@ -155,9 +138,8 @@ public class AddressExternalAdapter implements AddressRepositoryPort {
         var requestSpec = getClient().delete()
                 .uri("/api/v1/addresses/{id}", id);
 
-        String authHeader = toAuthorizationHeaderValue(jwtToken);
-        if (authHeader != null) {
-            requestSpec.header("Authorization", authHeader);
+        if (jwtToken != null && !jwtToken.isEmpty()) {
+            requestSpec.header("Authorization", "Bearer " + jwtToken);
         }
         
         return requestSpec

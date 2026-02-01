@@ -25,8 +25,6 @@ public class SecurityConfig {
                         .pathMatchers(
                                 "/api/auth/login",
                                 "/api/v1/auth/register",
-                                "/api/v1/auth/register-init",
-                                "/api/v1/auth/verify-otp",
                                 "/api-docs/**",
                                 "/swagger-ui.html",
                                 "/webjars/**",
