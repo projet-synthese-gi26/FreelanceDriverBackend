@@ -114,9 +114,7 @@ public class ContactExternalAdapter implements ContactRepositoryPort {
     @Override
     public Flux<Contact> findAllByContactableId(UUID contactableId, String jwtToken) {
         var requestSpec = getClient().get()
-                .uri(uriBuilder -> uriBuilder.path("/api/v1/contacts")
-                        .queryParam("contactableId", contactableId)
-                        .build());
+                .uri("/api/v1/contacts/parent/ORGANIZATION/{id}", contactableId);
 
         if (jwtToken != null && !jwtToken.isEmpty()) {
             requestSpec.header("Authorization", "Bearer " + jwtToken);

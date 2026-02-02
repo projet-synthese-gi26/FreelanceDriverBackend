@@ -10,5 +10,6 @@ import java.util.UUID;
 
 @Repository
 public interface ReviewR2dbcRepository extends ReactiveCrudRepository<ReviewEntity, UUID> {
-    Flux<ReviewEntity> findBySubjectIdAndSubjectType(UUID subjectId, SubjectType subjectType);
+    Flux<ReviewEntity> findBySubjectIdAndSubjectTypeOrderByCreatedAtDesc(UUID subjectId, SubjectType subjectType);
+    Flux<ReviewEntity> findByAuthorIdOrderByCreatedAtDesc(UUID authorId);
 }

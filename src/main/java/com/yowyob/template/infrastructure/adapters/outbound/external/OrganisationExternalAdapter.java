@@ -40,7 +40,8 @@ public class OrganisationExternalAdapter implements OrganisationRepositoryPort {
                 .uri("/api/v1/organizations");
 
         if (jwtToken != null && !jwtToken.isEmpty()) {
-            requestSpec.header("Authorization", "Bearer " + jwtToken);
+            String headerValue = jwtToken.startsWith("Bearer ") ? jwtToken : "Bearer " + jwtToken;
+            requestSpec.header("Authorization", headerValue);
         }
 
         return requestSpec
@@ -52,8 +53,20 @@ public class OrganisationExternalAdapter implements OrganisationRepositoryPort {
 
     @Override
     public Mono<Organisation> findById(UUID id) {
-        Mono<ExternalOrganizationResponse> orgMono = getClient().get()
-                .uri("/api/v1/organizations/{id}", id)
+        return findById(id, null);
+    }
+
+    @Override
+    public Mono<Organisation> findById(UUID id, String jwtToken) {
+        var requestSpec = getClient().get()
+                .uri("/api/v1/organizations/{id}", id);
+
+        if (jwtToken != null && !jwtToken.isEmpty()) {
+            String headerValue = jwtToken.startsWith("Bearer ") ? jwtToken : "Bearer " + jwtToken;
+            requestSpec.header("Authorization", headerValue);
+        }
+
+        Mono<ExternalOrganizationResponse> orgMono = requestSpec
                 .retrieve()
                 .bodyToMono(ExternalOrganizationResponse.class);
         return enrichOrganisation(orgMono);
@@ -72,7 +85,8 @@ public class OrganisationExternalAdapter implements OrganisationRepositoryPort {
                         .build());
                         
         if (jwtToken != null && !jwtToken.isEmpty()) {
-            requestSpec.header("Authorization", "Bearer " + jwtToken);
+            String headerValue = jwtToken.startsWith("Bearer ") ? jwtToken : "Bearer " + jwtToken;
+            requestSpec.header("Authorization", headerValue);
         }
 
         return requestSpec

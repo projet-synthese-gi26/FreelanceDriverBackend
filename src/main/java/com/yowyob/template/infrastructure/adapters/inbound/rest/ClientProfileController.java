@@ -45,6 +45,18 @@ public class ClientProfileController {
                         .build());
     }
 
+    @GetMapping("/user/{userId}")
+    @Operation(summary = "Obtenir le profil par userId", description = "Récupère les informations du profil Client par l'id utilisateur.")
+    public Mono<UserProfileResponse> getProfileByUserId(@PathVariable UUID userId,
+                                                        @Parameter(hidden = true) @RequestHeader(name = "Authorization") String authHeader) {
+        return clientProfileService.getProfile(userId, authHeader)
+                .map(profile -> UserProfileResponse.builder()
+                        .user(profile.getUser())
+                        .actor(profile.getActor())
+                        .organisation(profile.getOrganisation())
+                        .build());
+    }
+
     @PutMapping
     @Operation(summary = "Mettre à jour le profil", description = "Met à jour les informations de base du client.")
     public Mono<BusinessActor> updateProfile(@AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,

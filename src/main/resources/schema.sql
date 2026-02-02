@@ -85,8 +85,10 @@ CREATE TABLE Review (
     author_id UUID NOT NULL,
     subject_id UUID NOT NULL,
     subject_type TEXT NOT NULL,
+    review_type TEXT,
     rating INT CHECK (rating >= 1 AND rating <= 5),
     comment TEXT,
+    report_reason TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

@@ -1,11 +1,8 @@
 package com.yowyob.template.infrastructure.adapters.inbound.rest.dto;
 
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-import java.util.UUID;
 
 public record AddressRequest(
-        @NotBlank String addressableType,
+        String addressableType,
         String type,
         String addressLine1,
         String addressLine2,

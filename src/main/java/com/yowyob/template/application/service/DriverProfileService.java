@@ -53,9 +53,11 @@ public class DriverProfileService {
 
         return businessActorRepository.findByUserId(userId, token)
                 .switchIfEmpty(Mono.error(new RuntimeException("Business Actor not found for user: " + userId)))
-                .flatMap(actor -> {
-                    address.setAddressableId(actor.getId());
-                    address.setAddressableType("BUSINESS_ACTOR"); 
+                .flatMap(actor -> organisationRepository.findByActorId(actor.getId(), token))
+                .switchIfEmpty(Mono.error(new RuntimeException("Organisation not found for actor")))
+                .flatMap(org -> {
+                    address.setAddressableId(org.getId());
+                    address.setAddressableType("ORGANIZATION");
                     return addressRepository.update(address, token);
                 });
     }
@@ -65,9 +67,11 @@ public class DriverProfileService {
 
         return businessActorRepository.findByUserId(userId, token)
                 .switchIfEmpty(Mono.error(new RuntimeException("Business Actor not found for user: " + userId)))
-                .flatMap(actor -> {
-                    address.setAddressableId(actor.getId());
-                    address.setAddressableType("BUSINESS_ACTOR"); 
+                .flatMap(actor -> organisationRepository.findByActorId(actor.getId(), token))
+                .switchIfEmpty(Mono.error(new RuntimeException("Organisation not found for actor")))
+                .flatMap(org -> {
+                    address.setAddressableId(org.getId());
+                    address.setAddressableType("ORGANIZATION");
                     return addressRepository.save(address, token);
                 });
     }
@@ -81,7 +85,7 @@ public class DriverProfileService {
                 .switchIfEmpty(Mono.error(new RuntimeException("Organisation not found for actor")))
                 .flatMap(org -> {
                     contact.setContactableId(org.getId());
-                    contact.setContactableType("ORGANISATION"); 
+                    contact.setContactableType("ORGANIZATION");
                     return contactRepository.update(contact, token);
                 });
     }
@@ -89,7 +93,8 @@ public class DriverProfileService {
     public Flux<Address> getAddresses(UUID userId, String jwtToken) {
         String token = jwtToken != null && jwtToken.startsWith("Bearer ") ? jwtToken.substring(7) : jwtToken;
         return businessActorRepository.findByUserId(userId, token)
-            .flatMapMany(actor -> addressRepository.findAllByAddressableId(actor.getId(), token));
+                .flatMap(actor -> organisationRepository.findByActorId(actor.getId(), token))
+                .flatMapMany(org -> addressRepository.findAllByAddressableId(org.getId(), token));
     }
 
     public Mono<Void> deleteAddress(UUID userId, UUID addressId, String jwtToken) {
@@ -118,22 +123,21 @@ public class DriverProfileService {
     }
 
     public Mono<Contact> addContact(UUID userId, Contact contact, String jwtToken) {
-        // Strip "Bearer " if present, though adapters usually handle raw or bearer
-        String token = jwtToken.startsWith("Bearer ") ? jwtToken.substring(7) : jwtToken;
-        
+        String token = jwtToken != null && jwtToken.startsWith("Bearer ") ? jwtToken.substring(7) : jwtToken;
+
         return businessActorRepository.findByUserId(userId, token)
                 .switchIfEmpty(Mono.error(new RuntimeException("Business Actor not found for user: " + userId)))
                 .flatMap(actor -> organisationRepository.findByActorId(actor.getId(), token))
                 .switchIfEmpty(Mono.error(new RuntimeException("Organisation not found for actor")))
                 .flatMap(org -> {
                     contact.setContactableId(org.getId());
-                    contact.setContactableType("ORGANISATION"); 
+                    contact.setContactableType("ORGANIZATION");
                     return contactRepository.save(contact, token);
                 });
     }
 
     public Flux<Contact> getContacts(UUID userId, String jwtToken) {
-        String token = jwtToken.startsWith("Bearer ") ? jwtToken.substring(7) : jwtToken;
+        String token = jwtToken != null && jwtToken.startsWith("Bearer ") ? jwtToken.substring(7) : jwtToken;
 
         return businessActorRepository.findByUserId(userId, token)
                 .flatMap(actor -> organisationRepository.findByActorId(actor.getId(), token))

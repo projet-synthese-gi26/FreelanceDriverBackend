@@ -50,7 +50,8 @@ public class ClientProfileService {
         String token = jwtToken != null && jwtToken.startsWith("Bearer ") ? jwtToken.substring(7) : jwtToken;
 
         return businessActorRepository.findByUserId(userId, token)
-                .flatMapMany(actor -> contactRepository.findAllByContactableId(actor.getId(), token));
+                .flatMap(actor -> organisationRepository.findByActorId(actor.getId(), token))
+                .flatMapMany(org -> contactRepository.findAllByContactableId(org.getId(), token));
     }
 
     public Mono<Contact> addContact(UUID userId, Contact contact, String jwtToken) {
@@ -58,9 +59,11 @@ public class ClientProfileService {
 
         return businessActorRepository.findByUserId(userId, token)
                 .switchIfEmpty(Mono.error(new RuntimeException("Business Actor not found")))
-                .flatMap(actor -> {
-                    contact.setContactableId(actor.getId());
-                    contact.setContactableType("BUSINESS_ACTOR");
+                .flatMap(actor -> organisationRepository.findByActorId(actor.getId(), token))
+                .switchIfEmpty(Mono.error(new RuntimeException("Organisation not found")))
+                .flatMap(org -> {
+                    contact.setContactableId(org.getId());
+                    contact.setContactableType("ORGANIZATION");
                     return contactRepository.save(contact, token);
                 });
     }
@@ -69,31 +72,37 @@ public class ClientProfileService {
         String token = jwtToken != null && jwtToken.startsWith("Bearer ") ? jwtToken.substring(7) : jwtToken;
         
         return businessActorRepository.findByUserId(userId, token)
-            .flatMap(actor -> {
-                contact.setContactableId(actor.getId()); // ensure we preserve ownership info if needed
-                contact.setContactableType("BUSINESS_ACTOR");
-                return contactRepository.update(contact, token);
-            });
+                .flatMap(actor -> organisationRepository.findByActorId(actor.getId(), token))
+                .switchIfEmpty(Mono.error(new RuntimeException("Organisation not found")))
+                .flatMap(org -> {
+                    contact.setContactableId(org.getId());
+                    contact.setContactableType("ORGANIZATION");
+                    return contactRepository.update(contact, token);
+                });
     }
 
     public Mono<Address> addAddress(UUID userId, Address address, String jwtToken) {
         String token = jwtToken != null && jwtToken.startsWith("Bearer ") ? jwtToken.substring(7) : jwtToken;
         
         return businessActorRepository.findByUserId(userId, token)
-                 .flatMap(actor -> {
-                     address.setAddressableId(actor.getId());
-                     address.setAddressableType("BUSINESS_ACTOR");
-                     return addressRepository.save(address, token);
-                 });
+                .flatMap(actor -> organisationRepository.findByActorId(actor.getId(), token))
+                .switchIfEmpty(Mono.error(new RuntimeException("Organisation not found")))
+                .flatMap(org -> {
+                    address.setAddressableId(org.getId());
+                    address.setAddressableType("ORGANIZATION");
+                    return addressRepository.save(address, token);
+                });
     }
 
     public Mono<Address> updateAddress(UUID userId, Address address, String jwtToken) {
         String token = jwtToken != null && jwtToken.startsWith("Bearer ") ? jwtToken.substring(7) : jwtToken;
         
         return businessActorRepository.findByUserId(userId, token)
-                .flatMap(actor -> {
-                    address.setAddressableId(actor.getId());
-                    address.setAddressableType("BUSINESS_ACTOR");
+                .flatMap(actor -> organisationRepository.findByActorId(actor.getId(), token))
+                .switchIfEmpty(Mono.error(new RuntimeException("Organisation not found")))
+                .flatMap(org -> {
+                    address.setAddressableId(org.getId());
+                    address.setAddressableType("ORGANIZATION");
                     return addressRepository.update(address, token);
                 });
     }
@@ -111,6 +120,7 @@ public class ClientProfileService {
     public Flux<Address> getAddresses(UUID userId, String jwtToken) {
         String token = jwtToken != null && jwtToken.startsWith("Bearer ") ? jwtToken.substring(7) : jwtToken;
         return businessActorRepository.findByUserId(userId, token)
-            .flatMapMany(actor -> addressRepository.findAllByAddressableId(actor.getId(), token));
+                .flatMap(actor -> organisationRepository.findByActorId(actor.getId(), token))
+                .flatMapMany(org -> addressRepository.findAllByAddressableId(org.getId(), token));
     }
 }

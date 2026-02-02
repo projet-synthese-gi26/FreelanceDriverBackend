@@ -6,6 +6,8 @@ import com.yowyob.template.infrastructure.adapters.outbound.external.dto.ChangeP
 import com.yowyob.template.infrastructure.adapters.outbound.external.dto.TraMaSysUserResponse;
 import com.yowyob.template.infrastructure.adapters.outbound.external.dto.UpdateUserExternalRequest;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.MultipartBodyBuilder;
@@ -21,6 +23,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class UserExternalAdapter implements UserRepositoryPort {
     private final WebClient.Builder webClientBuilder;
+    private static final Logger log = LoggerFactory.getLogger(UserExternalAdapter.class);
 
     @Value("${application.external.auth-service-url}")
     private String authServiceUrl;
@@ -37,7 +40,10 @@ public class UserExternalAdapter implements UserRepositoryPort {
                 .uri("/api/users/{id}", id);
 
         if (jwtToken != null && !jwtToken.isEmpty()) {
-            requestSpec.header("Authorization", "Bearer " + jwtToken);
+            String headerValue = toAuthorizationHeaderValue(jwtToken);
+            if (headerValue != null) {
+                requestSpec.header("Authorization", headerValue);
+            }
         }
 
         return requestSpec
@@ -58,14 +64,28 @@ public class UserExternalAdapter implements UserRepositoryPort {
 
     @Override
     public Mono<User> updateUser(UUID id, User user) {
+        return updateUser(id, user, null);
+    }
+
+    @Override
+    public Mono<User> updateUser(UUID id, User user, String jwtToken) {
         UpdateUserExternalRequest request = new UpdateUserExternalRequest(
                 user.getFirstName(),
                 user.getLastName(),
                 user.getPhone()
         );
-        return webClientBuilder.baseUrl(authServiceUrl).build()
+        var requestSpec = webClientBuilder.baseUrl(authServiceUrl).build()
                 .put()
-                .uri("/api/users/{id}", id)
+                .uri("/api/users/{id}", id);
+
+        if (jwtToken != null && !jwtToken.isEmpty()) {
+            String headerValue = toAuthorizationHeaderValue(jwtToken);
+            if (headerValue != null) {
+                requestSpec.header("Authorization", headerValue);
+            }
+        }
+
+        return requestSpec
                 .bodyValue(request)
                 .retrieve()
                 .bodyToMono(TraMaSysUserResponse.class)
@@ -74,10 +94,24 @@ public class UserExternalAdapter implements UserRepositoryPort {
 
     @Override
     public Mono<Void> updatePassword(UUID id, String currentPassword, String newPassword) {
+        return updatePassword(id, currentPassword, newPassword, null);
+    }
+
+    @Override
+    public Mono<Void> updatePassword(UUID id, String currentPassword, String newPassword, String jwtToken) {
         ChangePasswordExternalRequest request = new ChangePasswordExternalRequest(currentPassword, newPassword);
-        return webClientBuilder.baseUrl(authServiceUrl).build()
+        var requestSpec = webClientBuilder.baseUrl(authServiceUrl).build()
                 .put()
-                .uri("/api/users/{id}/password", id)
+                .uri("/api/users/{id}/password", id);
+
+        if (jwtToken != null && !jwtToken.isEmpty()) {
+            String headerValue = toAuthorizationHeaderValue(jwtToken);
+            if (headerValue != null) {
+                requestSpec.header("Authorization", headerValue);
+            }
+        }
+
+        return requestSpec
                 .bodyValue(request)
                 .retrieve()
                 .bodyToMono(Void.class);
@@ -85,15 +119,46 @@ public class UserExternalAdapter implements UserRepositoryPort {
 
     @Override
     public Mono<User> updatePicture(UUID id, FilePart file) {
+        return updatePicture(id, file, null);
+    }
+
+    @Override
+    public Mono<User> updatePicture(UUID id, FilePart file, String jwtToken) {
+        log.info("Tentative de mise à jour de la photo de profil pour l'utilisateur id: {}", id);
+        if (file == null) {
+            log.warn("FilePart est nul. Impossible de téléverser.");
+            return Mono.empty();
+        }
+
+        String headerValue = toAuthorizationHeaderValue(jwtToken);
+
         MultipartBodyBuilder builder = new MultipartBodyBuilder();
         builder.part("file", file);
-        return webClientBuilder.baseUrl(authServiceUrl).build()
+
+        var requestSpec = webClientBuilder.baseUrl(authServiceUrl).build()
                 .post()
-                .uri("/api/users/{id}/picture", id)
+                .uri("/api/users/{id}/picture", id);
+
+        if (headerValue != null) {
+            requestSpec.header("Authorization", headerValue);
+            log.debug("En-tête d'autorisation défini.");
+        } else {
+            log.warn("L'en-tête d'autorisation est nul ou vide.");
+        }
+        log.debug("Envoi de la requête au service d'authentification externe pour la mise à jour de la photo de profil.");
+        return requestSpec
                 .contentType(MediaType.MULTIPART_FORM_DATA)
                 .body(BodyInserters.fromMultipartData(builder.build()))
                 .retrieve()
+                .onStatus(httpStatus -> !httpStatus.is2xxSuccessful(), response -> {
+                    log.error("Erreur reçue du service d'authentification : {} - {}", response.statusCode(), response.headers().asHttpHeaders());
+                    return response.bodyToMono(String.class)
+                        .doOnNext(body -> log.error("Corps de l'erreur : {}", body))
+                        .flatMap(body -> Mono.error(new RuntimeException("Échec de la mise à jour de la photo de profil : " + response.statusCode() + " - " + body)));
+                })
                 .bodyToMono(TraMaSysUserResponse.class)
+                .doOnSuccess(response -> log.info("Photo de profil mise à jour avec succès. User id: {}", id))
+                .doOnError(error -> log.error("Erreur lors de la mise à jour de la photo de profil. Message d'erreur: {}", error.getMessage(), error))
                 .map(this::mapToDomain);
     }
 
@@ -109,5 +174,19 @@ public class UserExternalAdapter implements UserRepositoryPort {
                 .photoUri(response.photoUri())
                 .permissions(response.permissions() != null ? response.permissions() : new java.util.ArrayList<>())
                 .build();
+    }
+    
+    private String toAuthorizationHeaderValue(String jwtToken) {
+        if (jwtToken == null) {
+            return null;
+        }
+        String token = jwtToken.trim();
+        if (token.isEmpty()) {
+            return null;
+        }
+        if (token.regionMatches(true, 0, "Bearer ", 0, "Bearer ".length())) {
+            return token;
+        }
+        return "Bearer " + token;
     }
 }

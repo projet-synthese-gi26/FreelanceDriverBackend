@@ -12,6 +12,7 @@ import java.util.UUID;
 
 @Repository
 public interface ReactionR2dbcRepository extends ReactiveCrudRepository<ReactionEntity, UUID> {
-    Flux<ReactionEntity> findByTargetIdAndTargetType(UUID targetId, SubjectType targetType);
+    Flux<ReactionEntity> findByActorIdOrderByCreatedAtDesc(UUID actorId);
+    Flux<ReactionEntity> findByTargetIdAndTargetTypeOrderByCreatedAtDesc(UUID targetId, SubjectType targetType);
     Mono<Void> deleteByActorIdAndTargetIdAndType(UUID actorId, UUID targetId, ReactionType type);
 }

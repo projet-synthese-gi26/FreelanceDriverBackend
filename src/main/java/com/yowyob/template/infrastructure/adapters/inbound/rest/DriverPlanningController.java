@@ -8,12 +8,13 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.core.OAuth2AuthenticatedPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import io.swagger.v3.oas.annotations.Parameter;
 
 import java.util.UUID;
 
@@ -31,50 +32,60 @@ public class DriverPlanningController {
     @Operation(summary = "Créer un planning", description = "Crée un nouveau créneau de transport pour le chauffeur connecté.")
     public Mono<Product> createPlanning(
             @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
-            @Parameter(hidden = true) @RequestHeader(name = "Authorization") String token,
+            ServerWebExchange exchange,
             @Valid @RequestBody CreatePlanningRequest request
     ) {
         UUID authUserId = UUID.fromString(principal.getAttribute("sub"));
-        return planningService.createDriverPlanning(authUserId, request, token);
+        return planningService.createDriverPlanning(authUserId, request, extractAuthToken(exchange));
     }
 
     @GetMapping
     public Flux<Product> listPlannings(
             @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
-            @Parameter(hidden = true) @RequestHeader(name = "Authorization") String token
+            ServerWebExchange exchange
     ) {
         UUID authUserId = UUID.fromString(principal.getAttribute("sub"));
-        return planningService.listDriverPlannings(authUserId, token);
+        return planningService.listDriverPlannings(authUserId, extractAuthToken(exchange));
+    }
+
+    @GetMapping("/user/{driverId}")
+    @Operation(summary = "Lister les plannings par driverId", description = "Récupère la liste des plannings pour un chauffeur donné (admin).")
+    public Flux<Product> listPlanningsByDriverId(@PathVariable UUID driverId) {
+        return planningService.listDriverPlanningsByDriverId(driverId);
     }
 
     @GetMapping("/{id}")
     public Mono<Product> getPlanning(
             @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
-            @Parameter(hidden = true) @RequestHeader(name = "Authorization") String token,
+            ServerWebExchange exchange,
             @PathVariable UUID id
     ) {
         UUID authUserId = UUID.fromString(principal.getAttribute("sub"));
-        return planningService.getDriverPlanning(authUserId, id, token);
+        return planningService.getDriverPlanning(authUserId, id, extractAuthToken(exchange));
     }
 
     @PutMapping("/{id}")
     public Mono<Product> updatePlanning(
             @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
-            @Parameter(hidden = true) @RequestHeader(name = "Authorization") String token,
+            ServerWebExchange exchange,
             @PathVariable UUID id,
             @Valid @RequestBody UpdatePlanningRequest request
     ) {
         UUID authUserId = UUID.fromString(principal.getAttribute("sub"));
-        return planningService.updateDriverPlanning(authUserId, id, request, token);
+        return planningService.updateDriverPlanning(authUserId, id, request, extractAuthToken(exchange));
     }
 
     @DeleteMapping("/{id}")
     public Mono<Void> deletePlanning(
             @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
-            @Parameter(hidden = true) @RequestHeader(name = "Authorization") String token,
+            ServerWebExchange exchange,
             @PathVariable UUID id
     ) {
         UUID authUserId = UUID.fromString(principal.getAttribute("sub"));
-        return planningService.deleteDriverPlanning(authUserId, id, token);
+        return planningService.deleteDriverPlanning(authUserId, id, extractAuthToken(exchange));
+    }
+
+    private String extractAuthToken(ServerWebExchange exchange) {
+        return exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
     }
 }

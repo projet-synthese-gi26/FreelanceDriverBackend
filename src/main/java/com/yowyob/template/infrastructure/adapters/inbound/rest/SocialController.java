@@ -5,12 +5,14 @@ import com.yowyob.template.application.service.ReviewService;
 import com.yowyob.template.domain.model.Reaction;
 import com.yowyob.template.domain.model.ReactionType;
 import com.yowyob.template.domain.model.Review;
+import com.yowyob.template.domain.model.ReviewType;
 import com.yowyob.template.domain.model.SubjectType;
 import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.ReactionRequest;
 import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.ReviewRequest;
 import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.UpdateReviewRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -62,8 +64,21 @@ public class SocialController {
     @GetMapping("/reactions")
     @Operation(summary = "Lister les réactions", description = "Récupère toutes les réactions associées à une cible donnée.")
     public Flux<Reaction> getReactions(@RequestParam UUID targetId,
+                                       @Parameter(schema = @Schema(implementation = SubjectType.class))
                                        @RequestParam SubjectType targetType) {
         return reactionService.getReactionsForTarget(targetId, targetType);
+    }
+
+    @GetMapping("/reactions/{id}")
+    @Operation(summary = "Obtenir une réaction", description = "Récupère les détails d'une réaction par son ID.")
+    public Mono<Reaction> getReactionById(@PathVariable UUID id) {
+        return reactionService.getReactionById(id);
+    }
+
+    @GetMapping("/reactions/user/{userId}")
+    @Operation(summary = "Lister les réactions par utilisateur", description = "Récupère toutes les réactions faites par un utilisateur (actorId).")
+    public Flux<Reaction> getReactionsByUser(@PathVariable UUID userId) {
+        return reactionService.getReactionsByActor(userId);
     }
 
     // --- Reviews ---
@@ -81,8 +96,10 @@ public class SocialController {
                             .authorId(authorId)
                             .subjectId(request.getSubjectId())
                             .subjectType(request.getSubjectType())
+                            .reviewType(request.getReviewType() != null ? request.getReviewType() : ReviewType.RATING)
                             .rating(request.getRating())
                             .comment(request.getComment())
+                            .reportReason(request.getReportReason())
                             .build();
                     return reviewService.createReview(review);
                 }));
@@ -97,8 +114,15 @@ public class SocialController {
     @GetMapping("/reviews")
     @Operation(summary = "Lister les avis par sujet", description = "Liste tous les avis pour un sujet donné (ex: un Chauffeur, un Produit).")
     public Flux<Review> getReviewsBySubject(@RequestParam UUID subjectId,
+                                            @Parameter(schema = @Schema(implementation = SubjectType.class))
                                             @RequestParam SubjectType subjectType) {
         return reviewService.getReviewsBySubject(subjectId, subjectType);
+    }
+
+    @GetMapping("/reviews/user/{userId}")
+    @Operation(summary = "Lister les avis par utilisateur", description = "Récupère tous les avis écrits par un utilisateur (authorId).")
+    public Flux<Review> getReviewsByUser(@PathVariable UUID userId) {
+        return reviewService.getReviewsByAuthor(userId);
     }
 
     @PutMapping("/reviews/{id}")
@@ -107,8 +131,10 @@ public class SocialController {
         return validateUpdateReviewRequest(request)
                 .then(Mono.defer(() -> {
                     Review review = Review.builder()
+                            .reviewType(request.getReviewType())
                             .rating(request.getRating())
                             .comment(request.getComment())
+                            .reportReason(request.getReportReason())
                             .build();
                     return reviewService.updateReview(id, review);
                 }));
@@ -134,6 +160,16 @@ public class SocialController {
         if (request.getSubjectType() == null) {
             return Mono.error(new IllegalArgumentException("subjectType est obligatoire"));
         }
+        ReviewType reviewType = request.getReviewType() != null ? request.getReviewType() : ReviewType.RATING;
+        if (reviewType == ReviewType.REPORT) {
+            if (request.getReportReason() == null || request.getReportReason().isBlank()) {
+                return Mono.error(new IllegalArgumentException("reportReason est obligatoire pour un signalement"));
+            }
+            if (request.getSubjectType() != SubjectType.DRIVER && request.getSubjectType() != SubjectType.CLIENT) {
+                return Mono.error(new IllegalArgumentException("Le signalement ne supporte que DRIVER ou CLIENT"));
+            }
+            return Mono.empty();
+        }
         if (request.getRating() == null) {
             return Mono.error(new IllegalArgumentException("rating est obligatoire"));
         }
@@ -144,6 +180,12 @@ public class SocialController {
     }
 
     private Mono<Void> validateUpdateReviewRequest(UpdateReviewRequest request) {
+        if (request.getReviewType() == ReviewType.REPORT) {
+            if (request.getReportReason() == null || request.getReportReason().isBlank()) {
+                return Mono.error(new IllegalArgumentException("reportReason est obligatoire pour un signalement"));
+            }
+            return Mono.empty();
+        }
         if (request.getRating() == null && (request.getComment() == null || request.getComment().isBlank())) {
             return Mono.error(new IllegalArgumentException("rating ou comment est obligatoire"));
         }

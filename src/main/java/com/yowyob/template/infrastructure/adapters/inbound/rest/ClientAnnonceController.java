@@ -48,6 +48,12 @@ public class ClientAnnonceController {
         return annonceService.listClientAnnonces(authUserId, token);
     }
 
+    @GetMapping("/user/{clientId}")
+    @Operation(summary = "Lister les annonces par clientId", description = "Récupère la liste des annonces pour un client donné (admin).")
+    public Flux<Product> listAnnoncesByClientId(@PathVariable UUID clientId) {
+        return annonceService.listClientAnnoncesByClientId(clientId);
+    }
+
     @GetMapping("/{id}")
     @Operation(summary = "Récupérer une annonce", description = "Récupère une demande de trajet spécifique pour le client connecté.")
     public Mono<Product> getAnnonce(

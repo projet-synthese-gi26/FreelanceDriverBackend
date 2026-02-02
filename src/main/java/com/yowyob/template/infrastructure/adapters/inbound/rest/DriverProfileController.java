@@ -45,6 +45,18 @@ public class DriverProfileController {
                         .build());
     }
 
+    @GetMapping("/user/{userId}")
+    @Operation(summary = "Obtenir le profil par userId", description = "Récupère les informations du profil Chauffeur par l'id utilisateur.")
+    public Mono<UserProfileResponse> getProfileByUserId(@PathVariable UUID userId,
+                                                        @Parameter(hidden = true) @RequestHeader(name = "Authorization") String authHeader) {
+        return service.getProfile(userId, authHeader)
+                .map(profile -> UserProfileResponse.builder()
+                        .user(profile.getUser())
+                        .actor(profile.getActor())
+                        .organisation(profile.getOrganisation())
+                        .build());
+    }
+
     @PutMapping("/addresses/{id}")
     @Operation(summary = "Mettre à jour une adresse", description = "Modifie une adresse du Chauffeur.")
     public Mono<AddressResponse> updateAddress(@AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,

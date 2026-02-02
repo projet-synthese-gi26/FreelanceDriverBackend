@@ -32,7 +32,13 @@ public class ReviewR2dbcAdapter implements ReviewRepositoryPort {
 
     @Override
     public Flux<Review> findBySubjectIdAndSubjectType(UUID subjectId, SubjectType subjectType) {
-        return repository.findBySubjectIdAndSubjectType(subjectId, subjectType)
+        return repository.findBySubjectIdAndSubjectTypeOrderByCreatedAtDesc(subjectId, subjectType)
+                .map(mapper::toDomain);
+    }
+
+    @Override
+    public Flux<Review> findByAuthorId(UUID authorId) {
+        return repository.findByAuthorIdOrderByCreatedAtDesc(authorId)
                 .map(mapper::toDomain);
     }
 

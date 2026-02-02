@@ -1,5 +1,7 @@
 package com.yowyob.template.infrastructure.adapters.inbound.rest.dto;
 
+import com.yowyob.template.domain.model.ReviewType;
+import com.yowyob.template.domain.model.SubjectType;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -7,8 +9,11 @@ public class ReviewResponse {
     private UUID id;
     private UUID authorId;
     private UUID subjectId;
+    private SubjectType subjectType;
+    private ReviewType reviewType;
     private Integer rating;
     private String comment;
+    private String reportReason;
     private OffsetDateTime createdAt;
 
     public UUID getId() {
@@ -35,6 +40,22 @@ public class ReviewResponse {
         this.subjectId = subjectId;
     }
 
+    public SubjectType getSubjectType() {
+        return subjectType;
+    }
+
+    public void setSubjectType(SubjectType subjectType) {
+        this.subjectType = subjectType;
+    }
+
+    public ReviewType getReviewType() {
+        return reviewType;
+    }
+
+    public void setReviewType(ReviewType reviewType) {
+        this.reviewType = reviewType;
+    }
+
     public Integer getRating() {
         return rating;
     }
@@ -49,6 +70,14 @@ public class ReviewResponse {
 
     public void setComment(String comment) {
         this.comment = comment;
+    }
+
+    public String getReportReason() {
+        return reportReason;
+    }
+
+    public void setReportReason(String reportReason) {
+        this.reportReason = reportReason;
     }
 
     public OffsetDateTime getCreatedAt() {

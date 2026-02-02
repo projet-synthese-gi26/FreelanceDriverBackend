@@ -114,9 +114,7 @@ public class AddressExternalAdapter implements AddressRepositoryPort {
     @Override
     public Flux<Address> findAllByAddressableId(UUID addressableId, String jwtToken) {
         var requestSpec = getClient().get()
-                .uri(uriBuilder -> uriBuilder.path("/api/v1/addresses")
-                        .queryParam("addressableId", addressableId)
-                        .build());
+                .uri("/api/v1/addresses/parent/ORGANIZATION/{id}", addressableId);
                         
         if (jwtToken != null && !jwtToken.isEmpty()) {
             requestSpec.header("Authorization", "Bearer " + jwtToken);
@@ -155,8 +153,23 @@ public class AddressExternalAdapter implements AddressRepositoryPort {
     private Address mapToDomain(ExternalAddressResponse response) {
         return Address.builder()
                 .id(response.id())
+                .addressableId(response.addressableId())
+                .addressableType(response.addressableType())
+                .type(response.type())
                 .addressLine1(response.addressLine1())
+                .addressLine2(response.addressLine2())
                 .city(response.city())
+                .state(response.state())
+                .locality(response.locality())
+                .zipCode(response.zipCode())
+                .countryId(response.countryId())
+                .poBox(response.poBox())
+                .neighborhood(response.neighborHood())
+                .informalDescription(null)
+                .isDefault(response.isDefault())
+                .latitude(response.latitude())
+                .longitude(response.longitude())
+                .createdAt(response.createdAt() != null ? java.sql.Timestamp.valueOf(response.createdAt()) : null)
                 .build();
     }
 }

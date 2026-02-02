@@ -85,6 +85,10 @@ public class DriverPlanningService {
                 .thenMany(productRepository.findByProductTypeAndClientId(PLANNING_TYPE, authUserId));
     }
 
+    public Flux<Product> listDriverPlanningsByDriverId(UUID driverId) {
+        return productRepository.findByProductTypeAndClientId(PLANNING_TYPE, driverId);
+    }
+
     public Mono<Product> getDriverPlanning(UUID authUserId, UUID planningId, String token) {
         return assertDriver(authUserId, token)
                 .then(productRepository.findByIdAndProductType(planningId, PLANNING_TYPE))
