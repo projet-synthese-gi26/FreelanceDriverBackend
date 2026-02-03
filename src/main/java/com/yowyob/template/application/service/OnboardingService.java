@@ -159,8 +159,15 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
-import java.util.UUID;
 
+//import pour le paiement
+
+import com.yowyob.template.domain.event.DriverOnboardedEvent;
+import lombok.extern.slf4j.Slf4j; // <--- LOGS
+import org.springframework.context.ApplicationEventPublisher; // <--- IMPORT
+
+import java.util.UUID;
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class OnboardingService {
@@ -169,6 +176,9 @@ public class OnboardingService {
     private final OrganisationRepositoryPort organisationRepository;
     // 1. Ajout du repository utilisateur pour récupérer les infos existantes
     private final UserRepositoryPort userRepository; 
+    
+    //injection pour le paiement
+    private final ApplicationEventPublisher publisher;
 
     public Mono<UserProfileResponse> registerAndOnboard(FullOnboardingRequest request) {
         RegisterRequest registerRequest = RegisterRequest.builder()
@@ -197,7 +207,20 @@ public class OnboardingService {
 
                     return onboardBusinessActor(user, request.getRoleType(), request.getOrganisationName(),
                             request.getOrganisationDescription(), request.getPhone(), request.getTitle(), request.getAddress(), authResponse.accessToken(), authResponse.refreshToken());
-                });
+                })
+
+                .doOnSuccess(response -> {
+                        if ("DRIVER".equalsIgnoreCase(request.getRoleType())) {
+                            log.info("Registration successful for DRIVER {}. Publishing wallet creation event.", response.getUser().getId());
+                            publisher.publishEvent(new DriverOnboardedEvent(
+                                    response.getUser().getId(),
+                                    response.getUser().getEmail(),
+                                    "DRIVER",
+                                    response.getAccessToken() // Le token frais pour créer le wallet
+                            ));
+                        }
+                    });
+    
     }
 
     public Mono<UserProfileResponse> becomeDriver(UUID userId, NewRoleRequest request, String accessToken) {
@@ -217,7 +240,16 @@ public class OnboardingService {
                         request.getAddress(), 
                         accessToken, 
                         null);
-                });
+                })
+                .doOnSuccess(response -> {
+                        log.info("User {} became DRIVER. Publishing wallet creation event.", userId);
+                        publisher.publishEvent(new DriverOnboardedEvent(
+                                userId,
+                                response.getUser().getEmail(),
+                                "DRIVER",
+                                accessToken
+                        ));
+                    });
     }
 
     public Mono<UserProfileResponse> becomeClient(UUID userId, NewRoleRequest request, String accessToken) {
