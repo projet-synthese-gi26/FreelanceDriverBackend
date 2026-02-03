@@ -25,6 +25,8 @@ public interface VehicleRepositoryPort {
     Mono<Void> deleteVehicle(UUID id, String jwtToken);
     
     Flux<Vehicle> getMyVehicles(String jwtToken);
+
+    Flux<Vehicle> getVehiclesByUserId(UUID userId);
     
     Mono<Vehicle> createVehicle(Vehicle vehicle, String jwtToken);
     

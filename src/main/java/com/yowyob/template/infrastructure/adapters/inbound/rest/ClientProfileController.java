@@ -173,6 +173,14 @@ public class ClientProfileController {
         return clientProfileService.getAddresses(userId, authHeader);
     }
 
+    @GetMapping("/addresses/user/{userId}")
+    @Operation(summary = "Lister les adresses par utilisateur",
+            description = "Récupère les adresses d'un client via son userId.")
+    public Flux<Address> getAddressesByUserId(@PathVariable UUID userId,
+                                              @Parameter(hidden = true) @RequestHeader(name = "Authorization") String authHeader) {
+        return clientProfileService.getAddresses(userId, authHeader);
+    }
+
     @PutMapping("/addresses/{id}")
     @Operation(summary = "Mettre à jour une adresse", description = "Met à jour une adresse existante du profil client.")
     public Mono<Address> updateAddress(@AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,

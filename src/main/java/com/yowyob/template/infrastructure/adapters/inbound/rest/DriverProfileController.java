@@ -176,6 +176,15 @@ public class DriverProfileController {
                 .map(this::mapToAddressResponse);
     }
 
+    @GetMapping("/addresses/user/{userId}")
+    @Operation(summary = "Lister les adresses par utilisateur",
+            description = "Récupère les adresses d'un chauffeur via son userId.")
+    public Flux<AddressResponse> getAddressesByUserId(@PathVariable UUID userId,
+                                                      @Parameter(hidden = true) @RequestHeader(name = "Authorization") String authHeader) {
+        return service.getAddresses(userId, authHeader)
+                .map(this::mapToAddressResponse);
+    }
+
     @PostMapping("/addresses")
     @Operation(summary = "Ajouter une adresse", description = "Ajoute une adresse au profil chauffeur.")
     public Mono<AddressResponse> addAddress(@AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,

@@ -140,6 +140,16 @@ public class VehicleExternalAdapter implements VehicleRepositoryPort {
     }
 
     @Override
+    public Flux<Vehicle> getVehiclesByUserId(UUID userId) {
+        return webClientBuilder.baseUrl(serviceUrl).build()
+                .get()
+                .uri("/vehicles/user/{userId}", userId)
+                .retrieve()
+                .bodyToFlux(ExternalVehicleResponse.class)
+                .map(this::mapToDomain);
+    }
+
+    @Override
     public Mono<Vehicle> createVehicle(Vehicle vehicle, String jwtToken) {
         return webClientBuilder.baseUrl(serviceUrl).build()
                 .post()

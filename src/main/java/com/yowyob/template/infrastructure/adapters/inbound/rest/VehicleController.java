@@ -8,6 +8,7 @@ import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.VehicleIllus
 import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.request.CreateVehicleRequest;
 import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.request.CreateVehicleSimplifiedRequest;
 import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.request.UpdateVehicleRequest;
+import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -60,6 +61,14 @@ public class VehicleController {
     public Flux<VehicleResponse> getMyVehicles(ServerWebExchange exchange) {
         String authHeader = extractAuthToken(exchange);
         return vehicleRepository.getMyVehicles(authHeader)
+                .map(this::mapToResponse);
+    }
+
+    @GetMapping("/user/{userId}")
+    @Operation(summary = "Lister les véhicules d'un utilisateur",
+            description = "Retourne les véhicules associés à l'utilisateur indiqué.")
+    public Flux<VehicleResponse> getVehiclesByUserId(@PathVariable UUID userId) {
+        return vehicleRepository.getVehiclesByUserId(userId)
                 .map(this::mapToResponse);
     }
 

@@ -2,6 +2,7 @@ package com.yowyob.template.infrastructure.adapters.inbound.rest;
 
 import com.yowyob.template.application.service.DriverPlanningService;
 import com.yowyob.template.domain.model.Product;
+import com.yowyob.template.domain.model.Planning;
 import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.request.CreatePlanningRequest;
 import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.request.UpdatePlanningRequest;
 import io.swagger.v3.oas.annotations.Operation;
@@ -44,6 +45,10 @@ public class DriverPlanningController {
             @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
             ServerWebExchange exchange
     ) {
+        if (principal == null) {
+            return productService.getAllProducts()
+                    .filter(product -> product instanceof Planning);
+        }
         UUID authUserId = UUID.fromString(principal.getAttribute("sub"));
         return planningService.listDriverPlannings(authUserId, extractAuthToken(exchange));
     }

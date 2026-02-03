@@ -44,6 +44,10 @@ public class ClientAnnonceController {
             @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
             @Parameter(hidden = true) @RequestHeader(name = "Authorization") String token
     ) {
+        if (principal == null) {
+            return productService.getAllProducts()
+                    .filter(product -> product instanceof com.yowyob.template.domain.model.Annonce);
+        }
         UUID authUserId = UUID.fromString(principal.getAttribute("sub"));
         return annonceService.listClientAnnonces(authUserId, token);
     }
