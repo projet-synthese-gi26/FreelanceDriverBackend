@@ -1,4 +1,4 @@
-package com.yowyob.template.infrastructure.adapters.inbound.rest.dto.request;
+package com.yowyob.template.infrastructure.adapters.inbound.rest.dto;
 
 import com.yowyob.template.domain.model.TripType;
 import io.swagger.v3.oas.annotations.media.Schema;

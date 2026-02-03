@@ -7,7 +7,7 @@ import com.yowyob.template.domain.model.ProductStatus;
 import com.yowyob.template.domain.ports.out.BusinessActorRepositoryPort;
 import com.yowyob.template.domain.ports.out.OrganisationRepositoryPort;
 import com.yowyob.template.domain.ports.out.ProductRepositoryPort;
-import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.request.CreatePlanningRequest;
+import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.CreatePlanningRequest;
 import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.request.UpdatePlanningRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.AccessDeniedException;
