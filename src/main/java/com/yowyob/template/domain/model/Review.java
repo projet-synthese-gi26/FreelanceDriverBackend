@@ -21,8 +21,10 @@ public class Review implements Reactable {
     private UUID authorId;
     private UUID subjectId;
     private SubjectType subjectType;
+    private ReviewType reviewType;
     private Integer rating;
     private String comment;
+    private String reportReason;
     private Boolean isVerifiedPurchase;
     private OffsetDateTime createdAt;
 

@@ -1,27 +1,23 @@
 package com.yowyob.template.domain.model;
 
 import java.time.LocalDateTime;
-import java.util.UUID;
 import lombok.Builder;
 import lombok.Data;
-import lombok.With;
 import lombok.AllArgsConstructor;
 import lombok.NoArgsConstructor;
 
 @Data
 @Builder
-@With
 @AllArgsConstructor
 @NoArgsConstructor
-public class Vehicle {
-    private UUID vehicleId;
-    private UUID vehicleMakeId;
-    private UUID vehicleModelId;
-    private UUID transmissionTypeId;
-    private UUID manufacturerId;
-    private UUID vehicleSizeId;
-    private UUID vehicleTypeId;
-    private UUID fuelTypeId;
+public class VehicleSimplified {
+    private String makeName;
+    private String modelName;
+    private String transmissionType;
+    private String manufacturerName;
+    private String sizeName;
+    private String typeName;
+    private String fuelTypeName;
     private String vehicleSerialNumber;
     private String vehicleSerialPhoto;
     private String registrationNumber;
@@ -35,6 +31,4 @@ public class Vehicle {
     private Double mileageSinceCommissioning;
     private Double vehicleAgeAtStart;
     private String brand;
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
 }

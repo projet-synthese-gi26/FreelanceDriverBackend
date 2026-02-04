@@ -78,6 +78,10 @@ public class ClientAnnonceService {
                 .thenMany(productRepository.findByProductTypeAndClientId(ANNONCE_TYPE, authUserId));
     }
 
+    public Flux<Product> listClientAnnoncesByClientId(UUID clientId) {
+        return productRepository.findByProductTypeAndClientId(ANNONCE_TYPE, clientId);
+    }
+
     public Mono<Product> getClientAnnonce(UUID authUserId, UUID annonceId, String token) {
         return assertClient(authUserId, token)
                 .then(productRepository.findByIdAndProductType(annonceId, ANNONCE_TYPE))

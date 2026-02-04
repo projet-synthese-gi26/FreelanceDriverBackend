@@ -26,8 +26,20 @@ public class ReactionR2dbcAdapter implements ReactionRepositoryPort {
     }
 
     @Override
+    public Mono<Reaction> findById(UUID id) {
+        return repository.findById(id)
+                .map(mapper::toDomain);
+    }
+
+    @Override
+    public Flux<Reaction> findByActorId(UUID actorId) {
+        return repository.findByActorIdOrderByCreatedAtDesc(actorId)
+                .map(mapper::toDomain);
+    }
+
+    @Override
     public Flux<Reaction> findByTargetIdAndTargetType(UUID targetId, SubjectType targetType) {
-        return repository.findByTargetIdAndTargetType(targetId, targetType)
+        return repository.findByTargetIdAndTargetTypeOrderByCreatedAtDesc(targetId, targetType)
                 .map(mapper::toDomain);
     }
 

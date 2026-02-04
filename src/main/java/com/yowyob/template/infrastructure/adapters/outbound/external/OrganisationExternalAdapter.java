@@ -28,20 +28,6 @@ public class OrganisationExternalAdapter implements OrganisationRepositoryPort {
         return webClientBuilder.baseUrl(orgServiceUrl).build();
     }
 
-     private String toAuthorizationHeaderValue(String jwtToken) {
-         if (jwtToken == null) {
-             return null;
-         }
-         String token = jwtToken.trim();
-         if (token.isEmpty()) {
-             return null;
-         }
-         if (token.regionMatches(true, 0, "Bearer ", 0, "Bearer ".length())) {
-             return token;
-         }
-         return "Bearer " + token;
-     }
-
     @Override
     public Mono<Organisation> save(Organisation organisation) {
         return save(organisation, null);
@@ -53,9 +39,9 @@ public class OrganisationExternalAdapter implements OrganisationRepositoryPort {
         var requestSpec = getClient().post()
                 .uri("/api/v1/organizations");
 
-        String authHeader = toAuthorizationHeaderValue(jwtToken);
-        if (authHeader != null) {
-            requestSpec.header("Authorization", authHeader);
+        if (jwtToken != null && !jwtToken.isEmpty()) {
+            String headerValue = jwtToken.startsWith("Bearer ") ? jwtToken : "Bearer " + jwtToken;
+            requestSpec.header("Authorization", headerValue);
         }
 
         return requestSpec
@@ -75,9 +61,9 @@ public class OrganisationExternalAdapter implements OrganisationRepositoryPort {
         var requestSpec = getClient().get()
                 .uri("/api/v1/organizations/{id}", id);
 
-        String authHeader = toAuthorizationHeaderValue(jwtToken);
-        if (authHeader != null) {
-            requestSpec.header("Authorization", authHeader);
+        if (jwtToken != null && !jwtToken.isEmpty()) {
+            String headerValue = jwtToken.startsWith("Bearer ") ? jwtToken : "Bearer " + jwtToken;
+            requestSpec.header("Authorization", headerValue);
         }
 
         Mono<ExternalOrganizationResponse> orgMono = requestSpec
@@ -98,9 +84,9 @@ public class OrganisationExternalAdapter implements OrganisationRepositoryPort {
                         .queryParam("actorId", actorId)
                         .build());
                         
-        String authHeader = toAuthorizationHeaderValue(jwtToken);
-        if (authHeader != null) {
-            requestSpec.header("Authorization", authHeader);
+        if (jwtToken != null && !jwtToken.isEmpty()) {
+            String headerValue = jwtToken.startsWith("Bearer ") ? jwtToken : "Bearer " + jwtToken;
+            requestSpec.header("Authorization", headerValue);
         }
 
         return requestSpec

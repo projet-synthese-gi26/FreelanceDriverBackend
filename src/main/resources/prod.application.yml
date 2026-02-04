@@ -1,19 +1,18 @@
 server:
-  port: 8082
+  port: 8080  # Port pour le service
 
 spring:
   application:
-    name: freelance-driver
-    
+    name: freelance-driver  # Nom de l'application
   docker:
     compose:
-      enabled: false
+      enabled: false  # Désactiver Docker Compose
 
-  # POSTGRESQL (R2DBC)
+  # Configuration de la base de données PostgreSQL (R2DBC)
   r2dbc:
-    url: r2dbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:payment_db}
-    username: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:password}
+    url: r2dbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:freelance_db}  # Utilisation des variables d'environnement pour l'URL
+    username: ${DB_USERNAME:postgres}  # Nom d'utilisateur de la base de données
+    password: ${DB_PASSWORD:password}  # Mot de passe de la base de données
     pool:
       enabled: true
       initial-size: 1
@@ -22,66 +21,88 @@ spring:
       max-life-time: 10m
       acquire-retry: 3
       max-acquire-time: 30s
-      validation-query: SELECT 1
+      validation-query: SELECT 1  # Requête de validation de la connexion
+
   sql:
     init:
       mode: always
 
-  # REDIS CLUSTER 
+  mail:
+    host: ${SPRING_MAIL_HOST:smtp.gmail.com}
+    port: ${SPRING_MAIL_PORT:587}
+    username: ${SPRING_MAIL_USERNAME:mbognengj@gmail.com}
+    password: ${SPRING_MAIL_PASSWORD:fmpjyadvpepfvcws}
+    properties:
+      mail.smtp.auth: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH:true}
+      mail.smtp.starttls.enable: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE:true}
+      mail.smtp.starttls.required: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_REQUIRED:true}
+      mail.debug: ${SPRING_MAIL_PROPERTIES_MAIL_DEBUG:true}
+
+  # Configuration du cluster Redis
   data:
     redis:
-      password: ${REDIS_PASSWORD:password}
+      password: ${REDIS_PASSWORD:password}  # Mot de passe Redis (si applicable)
       cluster:
         nodes:
-          - ${REDIS_HOST:localhost}:7001
+          - ${REDIS_HOST:localhost}:7001  # Nœuds du cluster Redis
           - ${REDIS_HOST:localhost}:7002
           - ${REDIS_HOST:localhost}:7003
           - ${REDIS_HOST:localhost}:7004
           - ${REDIS_HOST:localhost}:7005
           - ${REDIS_HOST:localhost}:7006
 
-  # KAFKA 
+  # Configuration Kafka
   kafka:
-    bootstrap-servers: ${KAFKA_HOST:localhost}:${KAFKA_PORT:9092} 
+    bootstrap-servers: ${KAFKA_HOST:localhost}:${KAFKA_PORT:9092}  # Serveurs Kafka (utilise localhost par défaut)
     consumer:
-      auto-offset-reset: earliest
-      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      auto-offset-reset: earliest  # Réinitialiser l'offset au début en cas d'absence
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer  # Désérialiseur de clé (String)
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer  # Désérialiseur de valeur (JSON)
       properties:
-        spring.json.trusted.packages: "*"
+        spring.json.trusted.packages: "*"  # Autoriser tous les packages pour la désérialisation JSON
     producer:
-      key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer  # Sérialiseur de clé (String)
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer  # Sérialiseur de valeur (JSON)
 
-# CUSTOM CONFIG 
+  # Configuration de la sécurité (OAuth2 Resource Server)
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${JWK_SET_URI:https://auth-service.pynfi.com/.well-known/jwks.json}  # URL du JWK Set
+
+# CONFIGURATION PERSONNALISÉE
 application:
   external:
-    stock-service-url: http://${EXTERNAL_HOST:localhost}:8081
+    auth-service-url: ${AUTH_SERVICE_URL:https://auth-service.pynfi.com}  # URL du service d'authentification (variable d'environnement)
+    organization-service-url: ${ORGANIZATION_SERVICE_URL:https://organization-service.pynfi.com}  # URL du service Organisation
+    stock-service-url: http://${EXTERNAL_HOST:localhost}:8081  # URL du service Stock
 
   kafka:
     topics:
-      product-events: test-topic
+      product-events: test-topic  # Topic Kafka pour les événements de produit
 
+# CONFIGURATION DES ENDPOINTS DE GESTION (Actuator)
 management:
   endpoints:
     web:
       exposure:
-        include: ["health","info","prometheus"]
+        include: ["health", "info", "prometheus"]  # Activer les endpoints d'Actuator
   endpoint:
     health:
-      show-details: "always"
+      show-details: "always"  # Afficher les détails de l'état de santé
       probes:
-        enabled: true
+        enabled: true  # Activer les sondes de santé (probes)
   metrics:
     export:
       prometheus:
-        enabled: true
+        enabled: true  # Exporter les métriques Prometheus
 
-# RESILIENCE4J 
+# CONFIGURATION DE RESILIENCE4J (Circuit Breaker)
 resilience4j:
   circuitbreaker:
     instances:
       stock-service:
-        failureRateThreshold: 50
-        waitDurationInOpenState: 5s
-        slidingWindowSize: 5
+        failureRateThreshold: 50  # Seuil de taux d'échec pour ouvrir le circuit (50%)
+        waitDurationInOpenState: 5s  # Durée d'attente avant de tenter une nouvelle requête (5 secondes)
+        slidingWindowSize: 5  # Nombre de requêtes dans la fenêtre glissante

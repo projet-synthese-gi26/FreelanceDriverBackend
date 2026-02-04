@@ -44,8 +44,18 @@ public class ClientAnnonceController {
             @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
             @Parameter(hidden = true) @RequestHeader(name = "Authorization") String token
     ) {
+        if (principal == null) {
+            return productService.getAllProducts()
+                    .filter(product -> product instanceof com.yowyob.template.domain.model.Annonce);
+        }
         UUID authUserId = UUID.fromString(principal.getAttribute("sub"));
         return annonceService.listClientAnnonces(authUserId, token);
+    }
+
+    @GetMapping("/user/{clientId}")
+    @Operation(summary = "Lister les annonces par clientId", description = "Récupère la liste des annonces pour un client donné (admin).")
+    public Flux<Product> listAnnoncesByClientId(@PathVariable UUID clientId) {
+        return annonceService.listClientAnnoncesByClientId(clientId);
     }
 
     @GetMapping("/{id}")

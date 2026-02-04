@@ -11,5 +11,6 @@ public interface ReviewRepositoryPort {
     Mono<Review> save(Review review);
     Mono<Review> findById(UUID id);
     Flux<Review> findBySubjectIdAndSubjectType(UUID subjectId, SubjectType subjectType);
+    Flux<Review> findByAuthorId(UUID authorId);
     Mono<Void> deleteById(UUID id);
 }

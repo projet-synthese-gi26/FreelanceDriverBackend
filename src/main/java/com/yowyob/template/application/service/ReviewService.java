@@ -24,23 +24,8 @@ public class ReviewService implements ReviewUseCase {
 
     @Override
     public Mono<Review> createReview(Review review) {
-        return verifySubjectExists(review.getSubjectId(), review.getSubjectType())
-                .flatMap(exists -> {
-                    if (!exists) {
-                        return Mono.error(new IllegalArgumentException("Subject " + review.getSubjectId() + " does not exist"));
-                    }
-                    review.setCreatedAt(OffsetDateTime.now());
-                    return repository.save(review);
-                });
-    }
-
-    private Mono<Boolean> verifySubjectExists(UUID targetId, SubjectType targetType) {
-        return switch (targetType) {
-            case PRODUCT -> productRepository.findById(targetId).map(p -> true).defaultIfEmpty(false);
-            case DRIVER, CLIENT -> actorRepository.findById(targetId).map(a -> true).defaultIfEmpty(false);
-            case ORGANISATION -> organisationRepository.findById(targetId).map(o -> true).defaultIfEmpty(false);
-            default -> Mono.just(true);
-        };
+        review.setCreatedAt(OffsetDateTime.now());
+        return repository.save(review);
     }
 
     @Override
@@ -60,12 +45,18 @@ public class ReviewService implements ReviewUseCase {
         return repository.findBySubjectIdAndSubjectType(subjectId, subjectType);
     }
 
+    public Flux<Review> getReviewsByAuthor(UUID authorId) {
+        return repository.findByAuthorId(authorId);
+    }
+
     @Override
     public Mono<Review> updateReview(UUID id, Review review) {
         return repository.findById(id)
                 .flatMap(existing -> {
+                    existing.setReviewType(review.getReviewType() != null ? review.getReviewType() : existing.getReviewType());
                     existing.setRating(review.getRating() != null ? review.getRating() : existing.getRating());
                     existing.setComment(review.getComment() != null ? review.getComment() : existing.getComment());
+                    existing.setReportReason(review.getReportReason() != null ? review.getReportReason() : existing.getReportReason());
                     return repository.save(existing);
                 });
     }

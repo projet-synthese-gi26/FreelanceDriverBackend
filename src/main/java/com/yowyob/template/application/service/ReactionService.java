@@ -61,4 +61,12 @@ public class ReactionService implements ReactionUseCase {
     public Flux<Reaction> getReactionsForTarget(UUID targetId, SubjectType targetType) {
         return repository.findByTargetIdAndTargetType(targetId, targetType);
     }
+
+    public Flux<Reaction> getReactionsByActor(UUID actorId) {
+        return repository.findByActorId(actorId);
+    }
+
+    public Mono<Reaction> getReactionById(UUID id) {
+        return repository.findById(id);
+    }
 }
