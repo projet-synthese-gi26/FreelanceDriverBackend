@@ -4,8 +4,11 @@ import com.yowyob.template.TemplateApplication;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
+
 @SpringBootTest(classes = TemplateApplication.class)
+@org.springframework.test.context.ActiveProfiles("test")
 class ReactiveHexagonalApplicationTests {
+
 
 	@Test
 	void contextLoads() {

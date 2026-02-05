@@ -1,6 +1,7 @@
 package com.yowyob.template.infrastructure.adapters.outbound.persistence;
 
 import com.yowyob.template.domain.model.Product;
+import com.yowyob.template.domain.model.ProductStatus;
 import com.yowyob.template.domain.ports.out.ProductRepositoryPort;
 import com.yowyob.template.infrastructure.adapters.outbound.persistence.repository.ProductR2dbcRepository;
 import com.yowyob.template.infrastructure.mappers.ProductMapper;
@@ -58,6 +59,12 @@ public class ProductR2dbcAdapter implements ProductRepositoryPort {
     @Override
     public Mono<Void> deleteAll(){
         return repository.deleteAll();
+    }
+
+    @Override
+    public Flux<Product> findByProductTypeAndStatus(String productType, ProductStatus status) {
+        return repository.findByProductTypeAndStatus(productType, status.name())
+                .map(mapper::toDomain);
     }
     
 }

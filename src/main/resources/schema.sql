@@ -4,13 +4,10 @@ DROP TABLE IF EXISTS Review CASCADE;
 DROP TABLE IF EXISTS reactions CASCADE;
 DROP TABLE IF EXISTS Settings CASCADE;
 DROP TABLE IF EXISTS otp_verifications CASCADE;
-DROP TYPE IF EXISTS product_status CASCADE;
-DROP TYPE IF EXISTS trip_type CASCADE;
-
--- Ajout de l'extension pour les UUIDs si elle n'existe pas
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- 1. ENUMERATIONS (Types de données contrôlés)
+DROP TYPE IF EXISTS product_status CASCADE;
+DROP TYPE IF EXISTS trip_type CASCADE;
 
 CREATE TYPE product_status AS ENUM (
     'Draft',
@@ -24,14 +21,10 @@ CREATE TYPE product_status AS ENUM (
     'Cancelled'
 );
 
-CREATE CAST (varchar AS product_status) WITH INOUT AS IMPLICIT;
-
 CREATE TYPE trip_type AS ENUM (
     'ONE_WAY',
     'ROUND_TRIP'
 );
-
-CREATE CAST (varchar AS trip_type) WITH INOUT AS IMPLICIT;
 
 -- 2. TABLE PRINCIPALE : PRODUCTS
 

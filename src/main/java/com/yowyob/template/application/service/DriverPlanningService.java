@@ -23,6 +23,11 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class DriverPlanningService {
 
+    public Flux<Product> getPublishedPlannings() {
+        return productRepository.findByProductTypeAndStatus(PLANNING_TYPE, ProductStatus.Published);
+    }
+
+
     private final BusinessActorRepositoryPort actorRepository;
     private final OrganisationRepositoryPort organisationRepository;
     private final ProductRepositoryPort productRepository;

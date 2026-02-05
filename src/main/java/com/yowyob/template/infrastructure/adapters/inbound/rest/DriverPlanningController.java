@@ -40,6 +40,12 @@ public class DriverPlanningController {
         return planningService.createDriverPlanning(authUserId, request, extractAuthToken(exchange));
     }
 
+    @GetMapping("/published")
+    @Operation(summary = "Lister les plannings publiés", description = "Récupère la liste de tous les plannings ayant le statut 'Published'.")
+    public Flux<Product> listPublishedPlannings() {
+        return planningService.getPublishedPlannings();
+    }
+
     @GetMapping
     public Flux<Product> listPlannings(
             @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
