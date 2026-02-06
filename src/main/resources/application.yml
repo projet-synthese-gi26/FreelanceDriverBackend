@@ -75,6 +75,9 @@ application:
     payment-service-url: ${PAYMENT_SERVICE_URL:https://payment-service.pynfi.com}
     organization-service-url: ${ORGANIZATION_SERVICE_URL:https://organization-service.pynfi.com}
     stock-service-url: http://${EXTERNAL_HOST:localhost}:8081
+    notification-service-url: ${NOTIFICATION_SERVICE_URL:https://notification-service.pynfi.com}
+    notification-app-name: "Freelance Driver App"
+    
   kafka:
     topics:
       product-events: product-events-topic

@@ -15,6 +15,10 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import lombok.extern.slf4j.Slf4j;
+
+
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class OrganisationExternalAdapter implements OrganisationRepositoryPort {
@@ -81,9 +85,9 @@ public class OrganisationExternalAdapter implements OrganisationRepositoryPort {
     public Mono<Organisation> findByActorId(UUID actorId, String jwtToken) {
         var requestSpec = getClient().get()
                 .uri(uriBuilder -> uriBuilder.path("/api/v1/organizations")
-                        .queryParam("actorId", actorId)
+                        .queryParam("businessActorId", actorId) 
                         .build());
-                        
+                            
         if (jwtToken != null && !jwtToken.isEmpty()) {
             String headerValue = jwtToken.startsWith("Bearer ") ? jwtToken : "Bearer " + jwtToken;
             requestSpec.header("Authorization", headerValue);
@@ -92,32 +96,65 @@ public class OrganisationExternalAdapter implements OrganisationRepositoryPort {
         return requestSpec
                 .retrieve()
                 .bodyToFlux(ExternalOrganizationResponse.class)
-                .next()
+                // --- SÉCURITÉ AJOUTÉE : On filtre manuellement pour ignorer les erreurs de l'API ---
+                .filter(response -> {
+                    boolean match = response.businessActorId().equals(actorId);
+                    if (!match) {
+                        log.debug("[ADAPTER-PAY] Skipping mismatch organization: {} (belongs to actor {})", 
+                            response.id(), response.businessActorId());
+                    }
+                    return match;
+                })
+                // --------------------------------------------------------------------------------
+                .next() // Maintenant, .next() prendra le premier qui CORRESPOND à votre ID
                 .flatMap(orgResponse -> enrichOrganisation(Mono.just(orgResponse)));
     }
 
     private Mono<Organisation> enrichOrganisation(Mono<ExternalOrganizationResponse> orgMono) {
-         return orgMono.flatMap(orgResponse -> {
-            Mono<List<ExternalCertificationResponse>> certsMono = getClient().get()
+        return orgMono.flatMap(orgResponse -> {
+            log.debug("[ADAPTER-ORG] Attempting to fetch certifications for organization ID: {}", orgResponse.id());
+
+            // On tente de récupérer les certifications auprès du service externe
+            return getClient().get()
                 .uri("/api/v1/certifications/organization/{id}", orgResponse.id())
                 .retrieve()
                 .bodyToFlux(ExternalCertificationResponse.class)
                 .collectList()
-                .onErrorResume(e -> Mono.just(Collections.emptyList()));
+                // --- SÉCURITÉ CRUCIALE ---
+                // Si l'API renvoie 401 (Unauthorized) ou 403, c'est que le client n'a pas le droit
+                // de voir les certifs du chauffeur. On logue un simple warning et on continue
+                // avec une liste vide pour ne pas faire planter tout le processus de paiement.
+                .onErrorResume(e -> {
+                    log.warn("[ADAPTER-ORG] Could not enrich organization {} with certifications (Access Denied or Error). Proceeding with basic data only.", orgResponse.id());
+                    return Mono.just(Collections.<ExternalCertificationResponse>emptyList());
+                })
+                .map(certs -> {
+                    // On transforme d'abord la réponse de base en objet domaine
+                    Organisation baseOrg = mapToDomainBasic(orgResponse);
 
-            return certsMono.map(certs -> {
-                Organisation baseOrg = mapToDomainBasic(orgResponse);
-                if (!certs.isEmpty()) {
-                    CertifiedOrganisation certifiedOrg = new CertifiedOrganisation();
-                    certifiedOrg.setWrappedOrganisation(baseOrg);
-                    certifiedOrg.setSyndicateName(certs.get(0).name());
-                    certifiedOrg.setId(baseOrg.getId());
-                    certifiedOrg.setName(baseOrg.getName());
-                    certifiedOrg.setActorId(baseOrg.getActorId());
-                    return certifiedOrg;
-                }
-                return baseOrg;
-            });
+                    // Si on a trouvé des certifications, on décore l'organisation
+                    if (!certs.isEmpty()) {
+                        log.info("[ADAPTER-ORG] Organization {} is certified by {}. Wrapping...", orgResponse.id(), certs.get(0).name());
+                        
+                        CertifiedOrganisation certifiedOrg = new CertifiedOrganisation();
+                        certifiedOrg.setWrappedOrganisation(baseOrg);
+                        certifiedOrg.setSyndicateName(certs.get(0).name());
+                        
+                        // Recopie des champs essentiels pour le domaine
+                        certifiedOrg.setId(baseOrg.getId());
+                        certifiedOrg.setName(baseOrg.getName());
+                        certifiedOrg.setActorId(baseOrg.getActorId());
+                        
+                        // TRÈS IMPORTANT : On recopie l'email pour le "Smart Email Resolution"
+                        certifiedOrg.setEmail(baseOrg.getEmail()); 
+                        
+                        return (Organisation) certifiedOrg;
+                    }
+
+                    // Sinon on renvoie l'organisation simple
+                    log.debug("[ADAPTER-ORG] No certifications found for organization {}.", orgResponse.id());
+                    return baseOrg;
+                });
         });
     }
 
