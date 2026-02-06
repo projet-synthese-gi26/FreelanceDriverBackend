@@ -30,6 +30,12 @@ public class UserController {
 
     private final UserUseCase userUseCase;
 
+    @GetMapping("/{id}")
+    @Operation(summary = "Obtenir le profil utilisateur public", description = "Récupère les informations publiques d'un utilisateur par son ID (endpoint public).")
+    public Mono<User> getPublicUser(@PathVariable UUID id) {
+        return userUseCase.getUserById(id);
+    }
+
     @PutMapping
     @Operation(summary = "Mettre à jour le profil utilisateur", description = "Met à jour le prénom, nom ou téléphone.")
     public Mono<User> updateProfile(

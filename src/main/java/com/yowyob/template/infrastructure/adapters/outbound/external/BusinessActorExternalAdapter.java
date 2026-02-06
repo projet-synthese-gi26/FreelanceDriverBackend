@@ -68,8 +68,20 @@ public class BusinessActorExternalAdapter implements BusinessActorRepositoryPort
 
     @Override
     public Mono<BusinessActor> findById(UUID id) {
-        return getClient().get()
-                .uri("/api/v1/business-actors/{id}", id)
+        return findById(id, null);
+    }
+
+    @Override
+    public Mono<BusinessActor> findById(UUID id, String jwtToken) {
+        var requestSpec = getClient().get()
+                .uri("/api/v1/business-actors/{id}", id);
+
+        String authHeader = toAuthorizationHeaderValue(jwtToken);
+        if (authHeader != null) {
+            requestSpec.header("Authorization", authHeader);
+        }
+
+        return requestSpec
                 .retrieve()
                 .bodyToMono(ExternalBusinessActorResponse.class)
                 .map(this::mapToDomain);

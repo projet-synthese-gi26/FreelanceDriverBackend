@@ -1,5 +1,6 @@
 package com.yowyob.template.domain.model;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -56,6 +57,11 @@ public abstract class Product implements Reviewable, Reactable, IAsset {
     
     @Builder.Default
     private List<String> metadata = new ArrayList<>();
+
+    @JsonProperty("userId")
+    public UUID getUserId() {
+        return clientId;
+    }
 
     // Méthodes des interfaces
     @Override

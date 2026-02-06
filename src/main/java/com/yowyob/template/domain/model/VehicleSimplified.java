@@ -31,4 +31,17 @@ public class VehicleSimplified {
     private Double mileageSinceCommissioning;
     private Double vehicleAgeAtStart;
     private String brand;
+    private Boolean airConditioned;
+    private Boolean comfortable;
+    private Boolean soft;
+    private Boolean screen;
+    private Boolean wifi;
+    private Boolean tollCharge;
+    private Boolean carParking;
+    private Boolean alarm;
+    private Boolean stateTax;
+    private Boolean driverAllowance;
+    private Boolean pickupAndDrop;
+    private Boolean internet;
+    private Boolean petsAllow;
 }

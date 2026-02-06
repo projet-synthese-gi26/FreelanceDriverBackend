@@ -42,16 +42,11 @@ services:
     ports:
       - "9092:9092"
     environment:
-      # Kafka dit à Zookeeper : "Salut, je suis le broker n°1, enregistre-moi"
       KAFKA_BROKER_ID: 1
-      #  Kafka demande : "Où se trouve mon manager ?" Il est à l'adresse 'zookeeper' sur le port 2181
-      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
-      
-      # LA LIGNE LA PLUS IMPORTANTE POUR TOI
-      # Quand ton application Java demandera à Kafka "Où dois-je me connecter ?",
-      # Kafka répondra : "Utilise l'adresse localhost sur le port 9092".
-      # C'est le pont entre le monde Docker et ton ordinateur.
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
 
   # Stock service Mock
   stock-mock:

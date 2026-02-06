@@ -1,30 +1,4 @@
-version: "3.8"
 services:
-  backend:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    ports:
-      - "8082:8081"  # Exposition du port pour l'application backend
-    environment:
-      SPRING_PROFILES_ACTIVE: prod
-      # Configuration spécifique à la production. Remplacez les valeurs par vos configurations
-      DB_HOST: postgres  # Utilisation du nom du service pour la communication interne
-      DB_PORT: 5432
-      DB_NAME: reactivedb
-      DB_USERNAME: user
-      DB_PASSWORD: password
-      REDIS_HOST: redis  # Utilisation du nom du service pour la communication interne
-      REDIS_PORT: 6379
-      REDIS_PASSWORD: password
-      KAFKA_HOST: kafka  # Utilisation du nom du service pour la communication interne
-      KAFKA_PORT: 9092
-      # ... autres variables d'environnement spécifiques à la prod...
-    depends_on:
-      - postgres
-      - redis
-      - kafka
-
   postgres:
     image: postgres:15-alpine
     environment:
@@ -32,14 +6,14 @@ services:
       POSTGRES_PASSWORD: password
       POSTGRES_DB: reactivedb
     ports:
-      - "5432:5432"  # Le port 5432 est exposé, mais uniquement pour l'accès depuis le Droplet
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379" # Le port 6379 est exposé, mais uniquement pour l'accès depuis le Droplet
+      - "6379:6379"
   #kafka:
     #image: bitnami/kafka:3.6.2
     #ports:
@@ -56,19 +30,45 @@ services:
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
     environment:
+      # Zookeeper écoute sur le port 2181 pour les ordres
       ZOOKEEPER_CLIENT_PORT: 2181
 
+  # ÉTAPE 2 : On lance le Travailleur
   kafka:
     image: confluentinc/cp-kafka:7.5.0
+    #  Kafka ne démarrera pas TANT QUE Zookeeper n'est pas prêt
     depends_on:
       - zookeeper
     ports:
       - "9092:9092"
     environment:
+      # Kafka dit à Zookeeper : "Salut, je suis le broker n°1, enregistre-moi"
       KAFKA_BROKER_ID: 1
+      #  Kafka demande : "Où se trouve mon manager ?" Il est à l'adresse 'zookeeper' sur le port 2181
       KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      
+      # LA LIGNE LA PLUS IMPORTANTE POUR TOI
+      # Quand ton application Java demandera à Kafka "Où dois-je me connecter ?",
+      # Kafka répondra : "Utilise l'adresse localhost sur le port 9092".
+      # C'est le pont entre le monde Docker et ton ordinateur.
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
 
+  # Stock service Mock
+  stock-mock:
+    image: wiremock/wiremock:2.35.0
+    ports:
+      - "8081:8080"
+
+    
+    # start the wiremock
+    command:
+      - "--root-dir"
+      - "/home/wiremock" # On lui dit où sont ses fichiers
+      - "--verbose"
+      - "--global-response-templating"
+    volumes:
+      # Cette ligne est correcte, elle met bien nos fichiers au bon endroit
+      - ./wiremock:/home/wiremock
 
 volumes:
   postgres_data:

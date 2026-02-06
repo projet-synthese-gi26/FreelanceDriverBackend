@@ -27,7 +27,7 @@ public class VehicleExternalAdapter implements VehicleRepositoryPort {
     private final WebClient.Builder webClientBuilder;
     private static final Logger log = LoggerFactory.getLogger(VehicleExternalAdapter.class);
 
-    @Value("${application.external.auth-service-url}")
+    @Value("${application.external.vehicle-service-url}")
     private String serviceUrl;
 
     @Override
@@ -202,7 +202,10 @@ public class VehicleExternalAdapter implements VehicleRepositoryPort {
             v.getRegistrationNumber(), v.getRegistrationPhoto(), v.getRegistrationExpiryDate(),
             v.getTankCapacity(), v.getLuggageMaxCapacity(), v.getTotalSeatNumber(),
             v.getAverageFuelConsumptionPerKm(), v.getMileageAtStart(), 
-            v.getMileageSinceCommissioning(), v.getVehicleAgeAtStart(), v.getBrand()
+            v.getMileageSinceCommissioning(), v.getVehicleAgeAtStart(), v.getBrand(),
+            v.getAirConditioned(), v.getComfortable(), v.getSoft(), v.getScreen(), v.getWifi(),
+            v.getTollCharge(), v.getCarParking(), v.getAlarm(), v.getStateTax(),
+            v.getDriverAllowance(), v.getPickupAndDrop(), v.getInternet(), v.getPetsAllow()
         );
     }
 
@@ -229,6 +232,19 @@ public class VehicleExternalAdapter implements VehicleRepositoryPort {
             .mileageSinceCommissioning(r.mileageSinceCommissioning())
             .vehicleAgeAtStart(r.vehicleAgeAtStart())
             .brand(r.brand())
+            .airConditioned(r.airConditioned())
+            .comfortable(r.comfortable())
+            .soft(r.soft())
+            .screen(r.screen())
+            .wifi(r.wifi())
+            .tollCharge(r.tollCharge())
+            .carParking(r.carParking())
+            .alarm(r.alarm())
+            .stateTax(r.stateTax())
+            .driverAllowance(r.driverAllowance())
+            .pickupAndDrop(r.pickupAndDrop())
+            .internet(r.internet())
+            .petsAllow(r.petsAllow())
             .createdAt(r.createdAt())
             .updatedAt(r.updatedAt())
             .build();
@@ -250,7 +266,10 @@ public class VehicleExternalAdapter implements VehicleRepositoryPort {
         String registrationNumber, String registrationPhoto, LocalDateTime registrationExpiryDate,
         Double tankCapacity, Double luggageMaxCapacity, Integer totalSeatNumber,
         Double averageFuelConsumptionPerKm, Double mileageAtStart, 
-        Double mileageSinceCommissioning, Double vehicleAgeAtStart, String brand
+        Double mileageSinceCommissioning, Double vehicleAgeAtStart, String brand,
+        Boolean airConditioned, Boolean comfortable, Boolean soft, Boolean screen, Boolean wifi,
+        Boolean tollCharge, Boolean carParking, Boolean alarm, Boolean stateTax,
+        Boolean driverAllowance, Boolean pickupAndDrop, Boolean internet, Boolean petsAllow
     ) {}
 
     record ExternalVehicleResponse(
@@ -260,7 +279,10 @@ public class VehicleExternalAdapter implements VehicleRepositoryPort {
         String registrationPhoto, LocalDateTime registrationExpiryDate, Double tankCapacity,
         Double luggageMaxCapacity, Integer totalSeatNumber, Double averageFuelConsumptionPerKm,
         Double mileageAtStart, Double mileageSinceCommissioning, Double vehicleAgeAtStart,
-        String brand, LocalDateTime createdAt, LocalDateTime updatedAt
+        String brand, LocalDateTime createdAt, LocalDateTime updatedAt,
+        Boolean airConditioned, Boolean comfortable, Boolean soft, Boolean screen, Boolean wifi,
+        Boolean tollCharge, Boolean carParking, Boolean alarm, Boolean stateTax,
+        Boolean driverAllowance, Boolean pickupAndDrop, Boolean internet, Boolean petsAllow
     ) {}
     
     record ExternalVehicleImageResponse(

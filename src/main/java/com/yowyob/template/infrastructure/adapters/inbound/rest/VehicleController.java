@@ -127,7 +127,10 @@ public class VehicleController {
             v.getRegistrationPhoto(), v.getRegistrationExpiryDate(), v.getTankCapacity(),
             v.getLuggageMaxCapacity(), v.getTotalSeatNumber(), v.getAverageFuelConsumptionPerKm(),
             v.getMileageAtStart(), v.getMileageSinceCommissioning(), v.getVehicleAgeAtStart(),
-            v.getBrand(), v.getCreatedAt(), v.getUpdatedAt()
+            v.getBrand(), v.getCreatedAt(), v.getUpdatedAt(),
+            v.getAirConditioned(), v.getComfortable(), v.getSoft(), v.getScreen(), v.getWifi(),
+            v.getTollCharge(), v.getCarParking(), v.getAlarm(), v.getStateTax(),
+            v.getDriverAllowance(), v.getPickupAndDrop(), v.getInternet(), v.getPetsAllow()
         );
     }
 
@@ -150,9 +153,35 @@ public class VehicleController {
             .totalSeatNumber(r.totalSeatNumber())
             .averageFuelConsumptionPerKm(r.averageFuelConsumptionPerKm())
             .mileageAtStart(r.mileageAtStart())
+            .airConditioned(r.airConditioned())
+            .comfortable(r.comfortable())
+            .soft(r.soft())
+            .screen(r.screen())
+            .wifi(r.wifi())
+            .tollCharge(r.tollCharge())
+            .carParking(r.carParking())
+            .alarm(r.alarm())
+            .stateTax(r.stateTax())
+            .driverAllowance(r.driverAllowance())
+            .pickupAndDrop(r.pickupAndDrop())
+            .internet(r.internet())
+            .petsAllow(r.petsAllow())
             .mileageSinceCommissioning(r.mileageSinceCommissioning())
             .vehicleAgeAtStart(r.vehicleAgeAtStart())
             .brand(r.brand())
+            .airConditioned(r.airConditioned())
+            .comfortable(r.comfortable())
+            .soft(r.soft())
+            .screen(r.screen())
+            .wifi(r.wifi())
+            .tollCharge(r.tollCharge())
+            .carParking(r.carParking())
+            .alarm(r.alarm())
+            .stateTax(r.stateTax())
+            .driverAllowance(r.driverAllowance())
+            .pickupAndDrop(r.pickupAndDrop())
+            .internet(r.internet())
+            .petsAllow(r.petsAllow())
             .build();
     }
 
@@ -178,6 +207,19 @@ public class VehicleController {
             .mileageSinceCommissioning(r.mileageSinceCommissioning())
             .vehicleAgeAtStart(r.vehicleAgeAtStart())
             .brand(r.brand())
+            .airConditioned(r.airConditioned())
+            .comfortable(r.comfortable())
+            .soft(r.soft())
+            .screen(r.screen())
+            .wifi(r.wifi())
+            .tollCharge(r.tollCharge())
+            .carParking(r.carParking())
+            .alarm(r.alarm())
+            .stateTax(r.stateTax())
+            .driverAllowance(r.driverAllowance())
+            .pickupAndDrop(r.pickupAndDrop())
+            .internet(r.internet())
+            .petsAllow(r.petsAllow())
             .build();
     }
 
@@ -203,6 +245,19 @@ public class VehicleController {
             .mileageSinceCommissioning(r.mileageSinceCommissioning())
             .vehicleAgeAtStart(r.vehicleAgeAtStart())
             .brand(r.brand())
+            .airConditioned(r.airConditioned())
+            .comfortable(r.comfortable())
+            .soft(r.soft())
+            .screen(r.screen())
+            .wifi(r.wifi())
+            .tollCharge(r.tollCharge())
+            .carParking(r.carParking())
+            .alarm(r.alarm())
+            .stateTax(r.stateTax())
+            .driverAllowance(r.driverAllowance())
+            .pickupAndDrop(r.pickupAndDrop())
+            .internet(r.internet())
+            .petsAllow(r.petsAllow())
             .build();
     }
 }

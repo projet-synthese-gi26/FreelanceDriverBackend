@@ -7,6 +7,7 @@ import reactor.core.publisher.Mono;
 import java.util.UUID;
 
 public interface UserUseCase {
+    Mono<User> getUserById(UUID id);
     Mono<User> updateUserProfile(UUID id, User user, String jwtToken);
     Mono<Void> changePassword(UUID id, String currentPassword, String newPassword, String jwtToken);
     Mono<User> updateProfilePicture(UUID id, FilePart file, String jwtToken);

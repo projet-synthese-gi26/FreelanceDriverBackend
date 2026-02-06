@@ -19,6 +19,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.core.OAuth2AuthenticatedPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.http.HttpHeaders;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -38,6 +39,7 @@ public class SocialController {
     @Operation(summary = "Ajouter une réaction", description = "Ajoute une réaction (Like, Love, etc.) à une cible donnée (Produit, Driver, etc.).")
     public Mono<Reaction> addReaction(
             @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
             @Valid @RequestBody ReactionRequest request
     ) {
         UUID actorId = UUID.fromString(principal.getAttribute("sub"));
@@ -46,7 +48,8 @@ public class SocialController {
                         actorId,
                         request.getTargetId(),
                         request.getTargetType(),
-                        request.getType()
+                        request.getType(),
+                        authorization
                 ));
     }
 
@@ -54,11 +57,12 @@ public class SocialController {
     @Operation(summary = "Supprimer une réaction", description = "Supprime une réaction existante.")
     public Mono<Void> removeReaction(
             @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
             @RequestParam UUID targetId,
             @RequestParam ReactionType type
     ) {
         UUID actorId = UUID.fromString(principal.getAttribute("sub"));
-        return reactionService.removeReaction(actorId, targetId, type);
+        return reactionService.removeReaction(actorId, targetId, type, authorization);
     }
 
     @GetMapping("/reactions")

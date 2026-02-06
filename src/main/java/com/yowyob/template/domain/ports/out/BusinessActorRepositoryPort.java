@@ -12,6 +12,7 @@ public interface BusinessActorRepositoryPort {
     Mono<BusinessActor> save(BusinessActor businessActor);
     Mono<BusinessActor> save(BusinessActor businessActor, String jwtToken);
     Mono<BusinessActor> findById(UUID id);
+    Mono<BusinessActor> findById(UUID id, String jwtToken);
     Mono<BusinessActor> findByUserId(UUID userId);
     Mono<BusinessActor> findByUserId(UUID userId, String jwtToken);
     Flux<BusinessActor> findAll();

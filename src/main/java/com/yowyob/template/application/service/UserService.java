@@ -16,6 +16,11 @@ public class UserService implements UserUseCase {
     private final UserRepositoryPort userRepository;
 
     @Override
+    public Mono<User> getUserById(UUID id) {
+        return userRepository.findById(id);
+    }
+
+    @Override
     public Mono<User> updateUserProfile(UUID id, User user, String jwtToken) {
         return userRepository.updateUser(id, user, jwtToken);
     }
