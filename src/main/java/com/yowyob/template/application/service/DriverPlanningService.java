@@ -26,6 +26,7 @@ public class DriverPlanningService {
     private final BusinessActorRepositoryPort actorRepository;
     private final OrganisationRepositoryPort organisationRepository;
     private final ProductRepositoryPort productRepository;
+    private final NotificationTriggerService notificationTriggerService;
 
     private static final String PLANNING_TYPE = "PLANNING";
 
@@ -106,12 +107,58 @@ public class DriverPlanningService {
                 .then(productRepository.findByIdAndProductType(planningId, PLANNING_TYPE))
                 .switchIfEmpty(Mono.error(new AccessDeniedException("Planning not found")))
                 .flatMap(existing -> {
-                    if (existing.getClientId() == null || !existing.getClientId().equals(authUserId)) {
-                        return Mono.error(new AccessDeniedException("Access denied"));
-                    }
+                    UUID previousReservedById = existing.getReservedById();
+                    ProductStatus previousStatus = existing.getStatus();
+
+                    boolean isOwner = existing.getClientId() != null && existing.getClientId().equals(authUserId);
+
                     if (!(existing instanceof Planning planning)) {
                         return Mono.error(new IllegalStateException("Product is not a Planning"));
                     }
+
+                    // Si ce n'est pas le propriétaire, on limite strictement les champs modifiables
+                    // (status / reservedById) et on vérifie que l'utilisateur correspond à reservedById.
+                    Mono<Void> authorizationCheck;
+                    if (isOwner) {
+                        authorizationCheck = Mono.empty();
+                    } else {
+                        boolean modifiesForbiddenField = request.title() != null
+                                || request.departureLocation() != null
+                                || request.dropoffLocation() != null
+                                || request.startDate() != null
+                                || request.startTime() != null
+                                || request.endDate() != null
+                                || request.endTime() != null
+                                || request.tripType() != null
+                                || request.meetupPoint() != null
+                                || request.tripIntention() != null
+                                || request.pricingMethod() != null
+                                || request.isNegotiable() != null
+                                || request.paymentOption() != null
+                                || request.regularAmount() != null
+                                || request.discountPercentage() != null
+                                || request.discountedAmount() != null;
+
+                        if (modifiesForbiddenField) {
+                            return Mono.error(new AccessDeniedException("Only status/reservedById can be updated by non-owner"));
+                        }
+
+                        UUID reservedByOrgId = existing.getReservedById();
+                        if (reservedByOrgId == null) {
+                            return Mono.error(new AccessDeniedException("Access denied"));
+                        }
+
+                        authorizationCheck = organisationRepository.findById(reservedByOrgId, token)
+                                .flatMap(org -> actorRepository.findById(org.getActorId(), token))
+                                .flatMap(actor -> {
+                                    if (actor.getUserId() == null || !actor.getUserId().equals(authUserId)) {
+                                        return Mono.error(new AccessDeniedException("Access denied"));
+                                    }
+                                    return Mono.empty();
+                                });
+                    }
+
+                    return authorizationCheck.then(Mono.defer(() -> {
 
                     if (request.title() != null) planning.setTitle(request.title());
                     if (request.departureLocation() != null) planning.setDepartureLocation(request.departureLocation());
@@ -155,7 +202,11 @@ public class DriverPlanningService {
                         if (request.discountedAmount() != null) planning.setDiscountedAmount(request.discountedAmount());
                         planning.setUpdatedAt(Timestamp.from(Instant.now()));
 
-                        return productRepository.save(planning);
+                        return productRepository.save(planning)
+                                .flatMap(saved -> notificationTriggerService
+                                        .onProductUpdated(PLANNING_TYPE, authUserId, previousReservedById, previousStatus, saved, token)
+                                        .thenReturn(saved));
+                    }));
                     }));
                 });
     }

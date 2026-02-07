@@ -1,5 +1,6 @@
 -- Nettoyage des anciennes tables si elles existent
 DROP TABLE IF EXISTS products CASCADE;
+DROP TABLE IF EXISTS user_devices CASCADE;
 DROP TABLE IF EXISTS Review CASCADE;
 DROP TABLE IF EXISTS reactions CASCADE;
 DROP TABLE IF EXISTS Settings CASCADE;
@@ -123,4 +124,15 @@ CREATE TABLE otp_verifications (
     expires_at TIMESTAMP WITH TIME ZONE,
     verified BOOLEAN DEFAULT false,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 6. TABLE USER_DEVICES
+
+CREATE TABLE IF NOT EXISTS user_devices (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL,
+    fcm_token TEXT NOT NULL,
+    platform TEXT NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE (fcm_token)
 );

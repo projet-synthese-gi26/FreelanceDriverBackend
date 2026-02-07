@@ -26,6 +26,7 @@ public class ClientAnnonceService {
     private final BusinessActorRepositoryPort actorRepository;
     private final OrganisationRepositoryPort organisationRepository;
     private final ProductRepositoryPort productRepository;
+    private final NotificationTriggerService notificationTriggerService;
 
     private static final String ANNONCE_TYPE = "ANNONCE";
     
@@ -99,12 +100,57 @@ public class ClientAnnonceService {
                 .then(productRepository.findByIdAndProductType(annonceId, ANNONCE_TYPE))
                 .switchIfEmpty(Mono.error(new AccessDeniedException("Annonce not found")))
                 .flatMap(existing -> {
-                    if (existing.getClientId() == null || !existing.getClientId().equals(authUserId)) {
-                        return Mono.error(new AccessDeniedException("Access denied"));
-                    }
+                    UUID previousReservedById = existing.getReservedById();
+                    ProductStatus previousStatus = existing.getStatus();
+
+                    boolean isOwner = existing.getClientId() != null && existing.getClientId().equals(authUserId);
+
                     if (!(existing instanceof Annonce annonce)) {
                         return Mono.error(new IllegalStateException("Product is not an Annonce"));
                     }
+
+                    // Si ce n'est pas le propriétaire, on limite strictement les champs modifiables
+                    // (status / reservedById) et on vérifie que l'utilisateur correspond à reservedById.
+                    Mono<Void> authorizationCheck;
+                    if (isOwner) {
+                        authorizationCheck = Mono.empty();
+                    } else {
+                        boolean modifiesForbiddenField = request.title() != null
+                                || request.departureLocation() != null
+                                || request.dropoffLocation() != null
+                                || request.startDate() != null
+                                || request.startTime() != null
+                                || request.endDate() != null
+                                || request.endTime() != null
+                                || request.tripType() != null
+                                || request.meetupPoint() != null
+                                || request.tripIntention() != null
+                                || request.pricingMethod() != null
+                                || request.isNegotiable() != null
+                                || request.paymentMethod() != null
+                                || request.cost() != null
+                                || request.baggageInfo() != null;
+
+                        if (modifiesForbiddenField) {
+                            return Mono.error(new AccessDeniedException("Only status/reservedById can be updated by non-owner"));
+                        }
+
+                        UUID reservedByOrgId = existing.getReservedById();
+                        if (reservedByOrgId == null) {
+                            return Mono.error(new AccessDeniedException("Access denied"));
+                        }
+
+                        authorizationCheck = organisationRepository.findById(reservedByOrgId, token)
+                                .flatMap(org -> actorRepository.findById(org.getActorId(), token))
+                                .flatMap(actor -> {
+                                    if (actor.getUserId() == null || !actor.getUserId().equals(authUserId)) {
+                                        return Mono.error(new AccessDeniedException("Access denied"));
+                                    }
+                                    return Mono.empty();
+                                });
+                    }
+
+                    return authorizationCheck.then(Mono.defer(() -> {
 
                     if (request.title() != null) annonce.setTitle(request.title());
                     if (request.departureLocation() != null) annonce.setDepartureLocation(request.departureLocation());
@@ -137,7 +183,11 @@ public class ClientAnnonceService {
                     if (request.baggageInfo() != null) annonce.setBaggageInfo(request.baggageInfo());
 
                     annonce.setUpdatedAt(Timestamp.from(Instant.now()));
-                    return productRepository.save(annonce);
+                    return productRepository.save(annonce)
+                            .flatMap(saved -> notificationTriggerService
+                                    .onProductUpdated(ANNONCE_TYPE, authUserId, previousReservedById, previousStatus, saved, token)
+                                    .thenReturn(saved));
+                    }));
                 });
     }
 

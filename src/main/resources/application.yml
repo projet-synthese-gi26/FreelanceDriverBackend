@@ -25,7 +25,7 @@ spring:
       validation-query: SELECT 1
   sql:
     init:
-      mode: never
+      mode: always
 
   mail:
     host: ${SPRING_MAIL_HOST:smtp.gmail.com}
@@ -79,6 +79,24 @@ application:
     organization-service-url: ${ORGANIZATION_SERVICE_URL:https://organization-service.pynfi.com}
     vehicle-service-url: ${VEHICLE_SERVICE_URL:https://vehicule.mbognengjunior.me}
     stock-service-url: http://${EXTERNAL_HOST:localhost}:8081
+    notification-service-url: ${NOTIFICATION_SERVICE_URL:https://notification-service.pynfi.com}
+    notification-service-token: ${NOTIFICATION_SERVICE_TOKEN:}
+  notification:
+    templates:
+      pull:
+        planning-requested: ${NOTIF_TPL_PULL_PLANNING_REQUESTED:}
+        planning-accepted: ${NOTIF_TPL_PULL_PLANNING_ACCEPTED:}
+        planning-confirmed: ${NOTIF_TPL_PULL_PLANNING_CONFIRMED:}
+        annonce-accepted: ${NOTIF_TPL_PULL_ANNONCE_ACCEPTED:}
+        annonce-confirmed: ${NOTIF_TPL_PULL_ANNONCE_CONFIRMED:}
+        review-received: ${NOTIF_TPL_PULL_REVIEW_RECEIVED:}
+      push:
+        planning-requested: ${NOTIF_TPL_PUSH_PLANNING_REQUESTED:}
+        planning-accepted: ${NOTIF_TPL_PUSH_PLANNING_ACCEPTED:}
+        planning-confirmed: ${NOTIF_TPL_PUSH_PLANNING_CONFIRMED:}
+        annonce-accepted: ${NOTIF_TPL_PUSH_ANNONCE_ACCEPTED:}
+        annonce-confirmed: ${NOTIF_TPL_PUSH_ANNONCE_CONFIRMED:}
+        review-received: ${NOTIF_TPL_PUSH_REVIEW_RECEIVED:}
   kafka:
     topics:
       product-events: product-events-topic

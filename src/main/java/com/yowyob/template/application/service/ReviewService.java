@@ -21,11 +21,13 @@ public class ReviewService implements ReviewUseCase {
     private final ProductRepositoryPort productRepository;
     private final BusinessActorRepositoryPort actorRepository;
     private final OrganisationRepositoryPort organisationRepository;
+    private final NotificationTriggerService notificationTriggerService;
 
     @Override
     public Mono<Review> createReview(Review review) {
         review.setCreatedAt(OffsetDateTime.now());
-        return repository.save(review);
+        return repository.save(review)
+                .flatMap(saved -> notificationTriggerService.onReviewCreated(saved).thenReturn(saved));
     }
 
     @Override
