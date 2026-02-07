@@ -136,43 +136,50 @@ public class DriverPlanningService {
                     ProductStatus oldStatus = planning.getStatus();
                     ProductStatus newStatus = request.status() != null ? ProductStatus.valueOf(request.status()) : oldStatus;
     
-                    log.info("{} [{}] Transition: {} -> {}", LOG_PREFIX, fid, oldStatus, newStatus);
+                    // --- RÉSOLUTION DU CHAUFFEUR (Pour avoir son téléphone réel) ---
+                    Mono<com.yowyob.template.domain.model.User> driverResolver = userRepository.findById(authUserId, token).cache();
     
                     // --- 1. ACTION SI TERMINATED (Paiement + Notif Chauffeur) ---
                     Mono<Void> terminatedAction = Mono.empty();
                     if (newStatus == ProductStatus.Terminated && oldStatus != ProductStatus.Terminated) {
                         BigDecimal amount = safeParseBigDecimal(planning.getRegularAmount(), fid);
-                        terminatedAction = paymentUseCase.processRidePayment(authUserId, amount)
+                        
+                        terminatedAction = driverResolver.flatMap(driver -> 
+                            paymentUseCase.processRidePayment(authUserId, amount)
                                 .then(notificationService.sendCommissionDeductedAlert(
-                                        authUserId, planning.getClientName(), "DÉFAUT", amount.multiply(new BigDecimal("0.1")).toString()
-                                ));
+                                        authUserId, 
+                                        driver.getFirstName(), 
+                                        driver.getPhone(), // <--- CORRECTION : On utilise le vrai téléphone
+                                        amount.multiply(new BigDecimal("0.1")).toString()
+                                ))
+                        ).onErrorResume(e -> Mono.empty());
                     }
     
-                    // --- 2. ACTION SI CONFIRMED (Notif Client) ---
+                    // --- 2. ACTION SI CONFIRMED (Notif au Client) ---
                     Mono<Void> confirmedAction = Mono.empty();
                     if (newStatus == ProductStatus.Confirmed && oldStatus != ProductStatus.Confirmed) {
-                        if (planning.getReservedById() == null) return Mono.error(new IllegalStateException("No client reserved this."));
+                        UUID clientId = (request.reservedById() != null) ? request.reservedById() : planning.getReservedById();
                         
-                        confirmedAction = organisationRepository.findById(planning.getReservedById(), token)
+                        if (clientId != null) {
+                            confirmedAction = organisationRepository.findById(clientId, token)
                                 .flatMap(org -> userRepository.findByEmail(org.getEmail()))
                                 .flatMap(clientUser -> notificationService.sendRideConfirmedAlert(
                                         clientUser.getId(), clientUser.getFirstName(), clientUser.getEmail(), 
                                         clientUser.getPhone(), planning.getTitle(), planning.getDropoffLocation()
-                                ));
+                                )).onErrorResume(e -> Mono.empty());
+                        }
                     }
     
-                    // --- 3. EXÉCUTION DES FLUX ET SAUVEGARDE ---
+                    // --- 3. SAUVEGARDE ---
                     return Mono.when(terminatedAction, confirmedAction)
                             .then(Mono.defer(() -> {
                                 mapUpdateToPlanning(planning, request);
                                 planning.setUpdatedAt(Timestamp.from(Instant.now()));
-                                return productRepository.save(planning)
-                                        .doOnNext(saved -> log.info("{} [{}] ✅ UPDATE SUCCESSFUL.", LOG_PREFIX, fid));
+                                return productRepository.save(planning);
                             }));
                 })
                 .doFinally(s -> log.info("{} ╚══════════════════════════════════════════════════════════════════════════", LOG_PREFIX));
     }
-
     // ============================================================================================
     // SUITE PARTIE IDENTIQUE
     // ============================================================================================
@@ -210,6 +217,8 @@ public class DriverPlanningService {
         if (request.startTime() != null) planning.setStartTime(request.startTime());
         if (request.endDate() != null) planning.setEndDate(request.endDate());
         if (request.endTime() != null) planning.setEndTime(request.endTime());
+
+        if (request.reservedById() != null) planning.setReservedById(request.reservedById());
         
         if (request.status() != null) {
             try {

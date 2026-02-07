@@ -17,10 +17,12 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * SERVICE DE NOTIFICATION - VERSION PUSH UNIQUEMENT (WhatsApp + Email)
+ * SERVICE DE NOTIFICATION - FOCUS WHATSAPP (Template ID 5)
  * 
- * Cette version a été épurée du mode PULL pour contourner les erreurs 500
- * du service externe et assurer la validation du flux métier.
+ * RESPONSABILITÉS :
+ * 1. Préparer les données pour le Template WhatsApp validé (ID: 5).
+ * 2. Déclencher l'envoi via le canal WhatsApp uniquement.
+ * 3. Tracer chaque envoi avec un FlowID unique et un rendu JSON.
  */
 @Slf4j
 @Service
@@ -30,82 +32,100 @@ public class NotificationService {
     private final NotificationGatewayPort notificationGateway;
     private final ObjectMapper objectMapper;
 
-    private static final String LOG_PREFIX = "[NOTIF-SERVICE]";
+    private static final String LOG_PREFIX = "[NOTIF-WHATSAPP-SVC]";
 
-    // IDs des templates configurés
-    private static final Integer TMPL_CONFIRMATION_EMAIL = 101;
-    private static final Integer TMPL_CONFIRMATION_WHATSAPP = 102;
-    private static final Integer TMPL_PAYMENT_WHATSAPP = 103;
+    // L'ID du template que vous avez créé et testé avec succès sur Swagger
+    private static final Integer VALIDATED_WHATSAPP_TEMPLATE_ID = 5;
 
     @PostConstruct
     public void init() {
+        // Configuration de l'ObjectMapper pour des logs lisibles en console
         objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
     }
 
     // ============================================================================================
-    // 1. ALERTE DE CONFIRMATION (WhatsApp + Email)
+    // 1. ALERTE DE CONFIRMATION (DÉCLENCHÉ SUR STATUT "Confirmed")
     // ============================================================================================
 
+    /**
+     * Envoie une alerte WhatsApp au destinataire pour confirmer le trajet.
+     */
     public Mono<Void> sendRideConfirmedAlert(UUID recipientUserId, String recipientName, String email, String phone, String rideTitle, String destination) {
-        String fid = generateFlowId("CONF");
+        String fid = generateFlowId("CONF-WA");
         
         log.info("{} ╔══════════════════════════════════════════════════════════════════════════", LOG_PREFIX);
-        log.info("{} ║ [{}] STARTING PUSH NOTIFICATIONS (WA + EMAIL)", LOG_PREFIX, fid);
+        log.info("{} ║ [{}] STARTING WHATSAPP NOTIFICATION: RIDE_CONFIRMED", LOG_PREFIX, fid);
+        log.info("{} ║ Recipient: {} | Phone: {} | Template: {}", LOG_PREFIX, recipientName, phone, VALIDATED_WHATSAPP_TEMPLATE_ID);
 
+        // Préparation des variables du template (doivent correspondre aux {{variables}} du template 5)
         Map<String, Object> data = new HashMap<>();
         data.put("userName", recipientName);
         data.put("rideTitle", rideTitle);
         data.put("destination", destination);
         
-        logJson(fid, "TEMPLATE_DATA", data);
+        logJson(fid, "WHATSAPP_DATA_PAYLOAD", data);
 
-        // Canal WhatsApp
-        Mono<Void> whatsapp = notificationGateway.sendImmediate(NotificationType.WHATSAPP, TMPL_CONFIRMATION_WHATSAPP, List.of(phone), data)
-                .doOnSuccess(v -> log.info("{} [{}] ✅ WhatsApp alert sent.", LOG_PREFIX, fid))
+        // Envoi immédiat via le canal WHATSAPP
+        return notificationGateway.sendImmediate(
+                    NotificationType.WHATSAPP, 
+                    VALIDATED_WHATSAPP_TEMPLATE_ID, 
+                    List.of(phone), 
+                    data
+                )
+                .doOnSuccess(v -> log.info("{} [{}] ✅ WhatsApp confirmation sent successfully to {}", LOG_PREFIX, fid, phone))
                 .onErrorResume(e -> {
-                    log.error("{} [{}] ⚠️ WhatsApp failed but continuing: {}", LOG_PREFIX, fid, e.getMessage());
-                    return Mono.empty();
-                });
-
-        // Canal Email
-        Mono<Void> mail = notificationGateway.sendImmediate(NotificationType.EMAIL, TMPL_CONFIRMATION_EMAIL, List.of(email), data)
-                .doOnSuccess(v -> log.info("{} [{}] ✅ Email sent.", LOG_PREFIX, fid))
-                .onErrorResume(e -> {
-                    log.error("{} [{}] ⚠️ Email failed but continuing: {}", LOG_PREFIX, fid, e.getMessage());
-                    return Mono.empty();
-                });
-
-        return Mono.when(whatsapp, mail)
+                    log.error("{} [{}] ❌ WhatsApp confirmation FAILED: {}", LOG_PREFIX, fid, e.getMessage());
+                    return Mono.empty(); // On ne bloque pas le flux métier si la notif échoue
+                })
                 .doOnTerminate(() -> {
-                    log.info("{} [{}] <<< END PUSH NOTIFICATIONS", LOG_PREFIX, fid);
+                    log.info("{} [{}] <<< END WHATSAPP NOTIFICATION PROCESS", LOG_PREFIX, fid);
                     log.info("{} ╚══════════════════════════════════════════════════════════════════════════", LOG_PREFIX);
                 });
     }
 
     // ============================================================================================
-    // 2. ALERTE DE PAIEMENT (WhatsApp uniquement)
+    // 2. ALERTE DE PAIEMENT (DÉCLENCHÉ SUR STATUT "Terminated")
     // ============================================================================================
 
+    /**
+     * Notifie le chauffeur via WhatsApp qu'une commission a été prélevée.
+     */
     public Mono<Void> sendCommissionDeductedAlert(UUID driverUserId, String driverName, String phone, String amount) {
-        String fid = generateFlowId("PAY");
+        String fid = generateFlowId("PAY-WA");
         
-        log.info("{} [{}] >>> NOTIFYING DRIVER FOR PAYMENT: {}", LOG_PREFIX, fid, driverName);
+        log.info("{} ╔══════════════════════════════════════════════════════════════════════════", LOG_PREFIX);
+        log.info("{} ║ [{}] STARTING WHATSAPP NOTIFICATION: PAYMENT_COMMISSION", LOG_PREFIX, fid);
+        log.info("{} ║ Driver: {} | Phone: {} | Amount: {}", LOG_PREFIX, driverName, phone, amount);
 
+        // Données pour le template
         Map<String, Object> data = new HashMap<>();
         data.put("userName", driverName);
         data.put("amount", amount);
+        // Note: Si le template 5 est utilisé, rideTitle et destination seront vides dans le message
+        data.put("rideTitle", "Commission Trajet"); 
+        data.put("destination", "Portefeuille");
 
-        // Envoi uniquement WhatsApp pour le paiement
-        return notificationGateway.sendImmediate(NotificationType.WHATSAPP, TMPL_PAYMENT_WHATSAPP, List.of(phone), data)
-                .doOnSuccess(v -> log.info("{} [{}] ✅ Payment WhatsApp sent to {}", LOG_PREFIX, fid, phone))
+        logJson(fid, "WHATSAPP_PAYMENT_PAYLOAD", data);
+
+        return notificationGateway.sendImmediate(
+                    NotificationType.WHATSAPP, 
+                    VALIDATED_WHATSAPP_TEMPLATE_ID, 
+                    List.of(phone), 
+                    data
+                )
+                .doOnSuccess(v -> log.info("{} [{}] ✅ Payment notification sent successfully to {}", LOG_PREFIX, fid, phone))
                 .onErrorResume(e -> {
-                    log.error("{} [{}] ⚠️ Payment notification failed: {}", LOG_PREFIX, fid, e.getMessage());
+                    log.error("{} [{}] ❌ Payment notification FAILED: {}", LOG_PREFIX, fid, e.getMessage());
                     return Mono.empty();
+                })
+                .doOnTerminate(() -> {
+                    log.info("{} [{}] <<< END PAYMENT NOTIFICATION PROCESS", LOG_PREFIX, fid);
+                    log.info("{} ╚══════════════════════════════════════════════════════════════════════════", LOG_PREFIX);
                 });
     }
 
     // ============================================================================================
-    // HELPERS
+    // HELPERS (TRAÇABILITÉ)
     // ============================================================================================
 
     private String generateFlowId(String prefix) {
@@ -114,9 +134,10 @@ public class NotificationService {
 
     private void logJson(String fid, String label, Object obj) {
         try {
-            log.info("{} [{}] {}:\n{}", LOG_PREFIX, fid, label, objectMapper.writeValueAsString(obj));
+            String json = objectMapper.writeValueAsString(obj);
+            log.info("{} [{}] {}:\n{}", LOG_PREFIX, fid, label, json);
         } catch (JsonProcessingException e) {
-            log.error("{} [{}] Logging error", LOG_PREFIX, fid);
+            log.error("{} [{}] Logging error: {}", LOG_PREFIX, fid, e.getMessage());
         }
     }
 }

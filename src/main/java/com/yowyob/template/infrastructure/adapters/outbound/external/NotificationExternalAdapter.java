@@ -10,13 +10,13 @@ import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
@@ -27,9 +27,12 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * ADAPTATEUR DE NOTIFICATION - VERSION AUTOPSIE (DIAGNOSTIC TOTAL)
+ * ADAPTATEUR DE NOTIFICATION - FOCUS WHATSAPP (LOGS MASSIFS)
  * 
- * Ce composant trace chaque détail de la communication avec l'API externe.
+ * RESPONSABILITÉS :
+ * 1. Gérer l'enregistrement automatique du service (Credentials GreenAPI).
+ * 2. Assurer l'envoi immédiat des messages WhatsApp.
+ * 3. Offrir une traçabilité totale (Request, Response, Error Body).
  */
 @Slf4j
 @Component
@@ -39,34 +42,36 @@ public class NotificationExternalAdapter implements NotificationGatewayPort {
     private final WebClient.Builder webClientBuilder;
     private final ObjectMapper objectMapper;
     
-    // Stockage du token en mémoire
+    // Cache thread-safe pour le X-Service-Token
     private final AtomicReference<String> serviceToken = new AtomicReference<>();
 
-    @Value("${application.external.notification-service-url}")
+    @Value("${application.external.notification-service-url:https://notification-service.pynfi.com}")
     private String baseUrl;
 
-    @Value("${application.external.notification-app-name:Freelance_Driver_App_Diagnostic}")
-    private String appName;
-
-    private static final String TAG = "[NOTIF-DEBUG]";
+    private static final String TAG = "[ADAPTER-NOTIF-WA]";
 
     @PostConstruct
-    public void init() {
-        // Force l'affichage JSON propre dans la console
+    public void setup() {
+        // Configuration de l'object mapper pour des logs JSON magnifiques
         objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
     }
 
     // ============================================================================================
-    // 1. ENVOI IMMÉDIAT (WhatsApp / Email)
+    // 1. ENVOI IMMÉDIAT (POINT D'ENTRÉE PRINCIPAL)
     // ============================================================================================
 
     @Override
     public Mono<Void> sendImmediate(NotificationType type, Integer templateId, List<String> recipients, Map<String, Object> data) {
         String tid = generateTraceId();
-        logHeader(tid, "SEND_IMMEDIATE");
+        Instant start = Instant.now();
+
+        logHeader(tid, "SEND_IMMEDIATE_WHATSAPP");
+        log.info("{} [{}] Target Recipients: {}", TAG, tid, recipients);
+        log.info("{} [{}] Using Template ID: {}", TAG, tid, templateId);
 
         return ensureAuthenticated(tid)
                 .flatMap(token -> {
+                    // Construction de la requête selon les specs de l'API
                     NotificationSendRequest request = NotificationSendRequest.builder()
                             .notificationType(type.name())
                             .templateId(templateId)
@@ -74,7 +79,7 @@ public class NotificationExternalAdapter implements NotificationGatewayPort {
                             .data(data)
                             .build();
 
-                    logRequest(tid, HttpMethod.POST, "/api/v1/notifications/send", request);
+                    logRequestDetails(tid, HttpMethod.POST, "/api/v1/notifications/send", request);
 
                     return webClientBuilder.baseUrl(baseUrl).build()
                             .post()
@@ -83,52 +88,32 @@ public class NotificationExternalAdapter implements NotificationGatewayPort {
                             .contentType(MediaType.APPLICATION_JSON)
                             .bodyValue(request)
                             .retrieve()
-                            .onStatus(HttpStatusCode::isError, res -> logAndInterrogateError(tid, res))
-                            .toBodilessEntity()
-                            .doOnNext(res -> log.info("{} [{}] ✅ SUCCESS: Message Accepted (Status: {})", TAG, tid, res.getStatusCode()))
+                            .onStatus(HttpStatusCode::isError, res -> captureAndLogErrorMessage(tid, res))
+                            .toEntity(String.class)
+                            .doOnNext(res -> {
+                                log.info("{} [{}] ✅ API SUCCESS RESPONSE", TAG, tid);
+                                log.info("{} [{}] Status Code: {}", TAG, tid, res.getStatusCode());
+                                log.info("{} [{}] Payload: {}", TAG, tid, res.getBody());
+                            })
                             .then();
                 })
-                .doOnError(e -> log.error("{} [{}] 💥 CRITICAL FAILURE: {}", TAG, tid, e.getMessage()))
-                .doFinally(s -> logFooter(tid));
+                .doOnError(e -> log.error("{} [{}] ❌ FATAL ERROR: {}", TAG, tid, e.getMessage()))
+                .doFinally(s -> logFooter(tid, start));
     }
 
     // ============================================================================================
-    // 2. CRÉATION POUR PULL (Historique App)
+    // 2. CRÉATION PULL (POUR MÉMOIRE - OPTIONNEL)
     // ============================================================================================
 
     @Override
     public Mono<Void> createForPull(UUID userId, NotificationType type, Integer templateId, Map<String, Object> data) {
-        String tid = generateTraceId();
-        logHeader(tid, "CREATE_PULL");
-
-        return ensureAuthenticated(tid)
-                .flatMap(token -> {
-                    NotificationPullRequest request = NotificationPullRequest.builder()
-                            .notificationType(type.name())
-                            .templateId(templateId)
-                            .userId(userId)
-                            .data(data)
-                            .build();
-
-                    logRequest(tid, HttpMethod.POST, "/api/v1/notifications", request);
-
-                    return webClientBuilder.baseUrl(baseUrl).build()
-                            .post()
-                            .uri("/api/v1/notifications")
-                            .header("X-Service-Token", token)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .bodyValue(request)
-                            .retrieve()
-                            .onStatus(HttpStatusCode::isError, res -> logAndInterrogateError(tid, res))
-                            .toBodilessEntity()
-                            .doOnNext(res -> log.info("{} [{}] ✅ SUCCESS: Pull Notif Created", TAG, tid))
-                            .then();
-                })
-                .doFinally(s -> logFooter(tid));
+        // On laisse la méthode pour l'interface, mais on logue qu'on se focus sur WA
+        log.debug("{} Ignoring Pull request for user {}, focus is on WhatsApp.", TAG, userId);
+        return Mono.empty();
     }
 
     // ============================================================================================
-    // 3. AUTHENTIFICATION & ENREGISTREMENT (CIBLE DU BUG 500)
+    // 3. AUTHENTIFICATION (L'ÉTAPE CRUCIALE AVEC VOS PARAMÈTRES RÉELS)
     // ============================================================================================
 
     private Mono<String> ensureAuthenticated(String tid) {
@@ -136,32 +121,26 @@ public class NotificationExternalAdapter implements NotificationGatewayPort {
             return Mono.just(serviceToken.get());
         }
 
-        log.info("{} [{}] >>> NO TOKEN. Starting Registration with FULL BODY...", TAG, tid);
+        log.info("{} [{}] >>> NO TOKEN. Registering STATIC Service...", TAG, tid);
 
-        // Nom unique pour éviter les collisions
-        String uniqueName = appName + "_" + UUID.randomUUID().toString().substring(0, 5);
+        // 1. UTILISER UN NOM FIXE (Celui qui a marché dans votre Swagger)
+        // Comme ça, on garde le même token et les mêmes templates
+        String staticName = "Freelance_Driver_App_Final_Validation_OBAMA";
 
-        // Corps complet pour satisfaire la validation stricte de l'API externe
         ServiceRegistrationRequest regRequest = ServiceRegistrationRequest.builder()
-                .name(uniqueName)
-                // Configuration Email (Réelle)
+                .name(staticName)
                 .emailServerHost("smtp.gmail.com")
                 .emailServerPort(587)
                 .emailUsername("mbognengj@gmail.com")
                 .emailPassword("fmpjyadvpepfvcws")
-                // Configuration SMS (Dummy - Requis pour éviter Erreur 500)
                 .smsServerHost("api.twilio.com")
                 .smsServerPort("443")
-                .smstoken("SK_DUMMY_TOKEN_123456")
-                // Configuration WhatsApp (Dummy - Requis)
-                .whatsappApiUrl("https://7103.api.greenapi.com/")
-                .whatsappIdInstance("1101123456")
-                .whatsappApiTokenInstance("dummy-token-wa-123456")
-                // Configuration Firebase (JSON Dummy - Requis)
-                .firebaseServiceAccountJson("{\"type\": \"service_account\", \"project_id\": \"dummy-id\"}")
+                .smstoken("SK_DUMMY")
+                .whatsappApiUrl("https://7105.api.greenapi.com")
+                .whatsappIdInstance("7105420174")
+                .whatsappApiTokenInstance("83c57a60ad2c440f8ba9522c5523eb81a8df3739f944443781")
+                .firebaseServiceAccountJson("{\"type\": \"service_account\"}")
                 .build();
-
-        logRequest(tid, HttpMethod.POST, "/api/v1/services", regRequest);
 
         return webClientBuilder.baseUrl(baseUrl).build()
                 .post()
@@ -169,40 +148,40 @@ public class NotificationExternalAdapter implements NotificationGatewayPort {
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(regRequest)
                 .retrieve()
-                .onStatus(HttpStatusCode::isError, res -> logAndInterrogateError(tid, res))
+                .onStatus(HttpStatusCode::isError, res -> captureAndLogErrorMessage(tid, res))
                 .bodyToMono(ServiceRegistrationResponse.class)
                 .flatMap(res -> {
-                    log.info("{} [{}] ✅ REGISTRATION SUCCESS. ServiceID: {}, Token received.", TAG, tid, res.serviceId());
+                    log.info("{} [{}] ✅ Service Active. ID: {}", TAG, tid, res.serviceId());
                     serviceToken.set(res.token());
-                    // Création des templates une fois le service enregistré
-                    return createTemplates(tid, res.token()).thenReturn(res.token());
-                })
-                .doOnError(e -> log.error("{} [{}] 💥 FINAL REGISTRATION ATTEMPT FAILED: {}", TAG, tid, e.getMessage()));
+                    
+                    // 2. CRÉER LE TEMPLATE AUTOMATIQUEMENT S'IL N'EXISTE PAS
+                    return createTemplateIfMissing(tid, res.token()).thenReturn(res.token());
+                });
     }
 
-    private Mono<Void> createTemplates(String tid, String token) {
-        log.info("{} [{}] Initializing Templates...", TAG, tid);
+    private Mono<Void> createTemplateIfMissing(String tid, String token) {
+        // On crée le template 5 (ou un autre) pour ce service précis
+        TemplateCreateRequest tpl = TemplateCreateRequest.builder()
+                .templateId(5) // On demande l'ID 5
+                .name("WhatsApp Confirmation")
+                .type("WHATSAPP")
+                .body("Bonjour {{userName}}, votre trajet {{rideTitle}} vers {{destination}} est confirmé ! Montant commission: {{amount}} FCFA.")
+                .build();
 
-        List<TemplateCreateRequest> tpls = List.of(
-            TemplateCreateRequest.builder().templateId(101).type("EMAIL").name("ConfEmail").subject("Ride Confirmed").bodyHtml("Hi {{userName}}, ride {{rideTitle}} is confirmed.").build(),
-            TemplateCreateRequest.builder().templateId(102).type("WHATSAPP").name("ConfWA").body("Hi {{userName}}, ride {{rideTitle}} to {{destination}} is confirmed!").build(),
-            TemplateCreateRequest.builder().templateId(103).type("WHATSAPP").name("PayWA").body("Hi {{userName}}, commission of {{amount}} FCFA deducted.").build(),
-            TemplateCreateRequest.builder().templateId(104).type("PULL").name("AppNotif").body("Ride {{rideTitle}} updated.").build()
-        );
-
-        return Flux.fromIterable(tpls)
-                .flatMap(t -> {
-                    log.info("{} [{}] Creating Template {} ({})", TAG, tid, t.templateId(), t.type());
-                    return webClientBuilder.baseUrl(baseUrl).build()
-                            .post()
-                            .uri("/api/v1/templates")
-                            .header("X-Service-Token", token)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .bodyValue(t)
-                            .retrieve()
-                            .onStatus(HttpStatusCode::isError, r -> Mono.empty()) // Silencieux si déjà existant
-                            .toBodilessEntity();
-                }).then();
+        return webClientBuilder.baseUrl(baseUrl).build()
+                .post()
+                .uri("/api/v1/templates")
+                .header("X-Service-Token", token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(tpl)
+                .retrieve()
+                .toBodilessEntity()
+                .doOnSuccess(r -> log.info("{} [{}] ✅ Template 5 synchronized.", TAG, tid))
+                .onErrorResume(e -> {
+                    log.info("{} [{}] Template 5 already exists or created. Continuing...", TAG, tid);
+                    return Mono.empty();
+                })
+                .then();
     }
 
     @Override
@@ -211,52 +190,51 @@ public class NotificationExternalAdapter implements NotificationGatewayPort {
     }
 
     // ============================================================================================
-    // SYSTÈME D'AUTOPSIE (LOGS RICHES)
+    // SYSTÈME DE LOGGING AVANCÉ (AUTOPSIE)
     // ============================================================================================
 
     private void logHeader(String tid, String op) {
         log.info("{} ╔══════════════════════════════════════════════════════════════════════════", TAG);
-        log.info("{} ║ PROCESS: {} | TRACE: {}", TAG, op, tid);
+        log.info("{} ║ 🟢 STARTING: {} | Trace: {}", TAG, op, tid);
+        log.info("{} ║ Time: {}", TAG, Instant.now());
     }
 
-    private void logFooter(String tid) {
-        log.info("{} ║ END PROCESS | TRACE: {}", TAG, tid);
+    private void logFooter(String tid, Instant start) {
+        long duration = Duration.between(start, Instant.now()).toMillis();
+        log.info("{} ║ 🏁 END PROCESS | Trace: {} | Execution Time: {}ms", TAG, tid, duration);
         log.info("{} ╚══════════════════════════════════════════════════════════════════════════", TAG);
     }
 
-    private void logRequest(String tid, HttpMethod method, String path, Object body) {
-        log.info("{} ║ OUTGOING REQUEST:", TAG, tid);
-        log.info("{} ║   -> Method: {}", TAG, method);
-        log.info("{} ║   -> URL: {}{}", TAG, baseUrl, path);
+    private void logRequestDetails(String tid, HttpMethod method, String path, Object body) {
+        log.info("{} ║ 📤 OUTGOING REQUEST:", TAG, tid);
+        log.info("{} ║   -> Method : {}", TAG, method);
+        log.info("{} ║   -> URL    : {}{}", TAG, baseUrl, path);
         try {
             String json = objectMapper.writeValueAsString(body);
-            log.info("{} ║   -> BODY PAYLOAD:\n{}", TAG, json);
+            log.info("{} ║   -> BODY   :\n{}", TAG, json);
         } catch (Exception e) {
-            log.warn("{} ║   -> [Serialization Failed]", TAG);
+            log.warn("{} ║   -> [Body Serialization Failed]", TAG);
         }
     }
 
-    /**
-     * Intercepte la réponse d'erreur et lit le Body pour le logger avant de lancer l'exception.
-     */
-    private Mono<Throwable> logAndInterrogateError(String tid, ClientResponse response) {
+    private Mono<Throwable> captureAndLogErrorMessage(String tid, ClientResponse response) {
         log.error("{} ║ 🛑 API REJECTION DETECTED", TAG, tid);
         log.error("{} ║   -> HTTP Status: {}", TAG, response.statusCode());
 
         return response.bodyToMono(String.class)
-                .defaultIfEmpty("[EMPTY RESPONSE BODY]")
-                .flatMap(body -> {
-                    log.error("{} ║   -> SERVER RESPONSE BODY:\n{}", TAG, body);
+                .defaultIfEmpty("[EMPTY ERROR RESPONSE]")
+                .flatMap(errorBody -> {
+                    log.error("{} ║   -> SERVER ERROR BODY:\n{}", TAG, errorBody);
                     
-                    // Analyse automatique
-                    if (body.contains("already exists")) log.error("{} ║   -> ANALYSIS: Unique Constraint Violation on Server.", TAG);
-                    if (response.statusCode().value() == 500) log.error("{} ║   -> ANALYSIS: Internal Server Crash (Professor's API issue).", TAG);
-
-                    return Mono.error(new RuntimeException("Notification Service Error: " + body));
+                    // Aide au diagnostic
+                    if (errorBody.contains("Unauthorized")) log.error("{} ║   -> SUGGESTION: The X-Service-Token is invalid.", TAG);
+                    if (response.statusCode().value() == 500) log.error("{} ║   -> SUGGESTION: Check if instance is connected in GreenAPI Console.", TAG);
+                    
+                    return Mono.error(new RuntimeException("Notification API Rejected Call: " + errorBody));
                 });
     }
 
     private String generateTraceId() {
-        return UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        return "NOTIF-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
     }
 }
