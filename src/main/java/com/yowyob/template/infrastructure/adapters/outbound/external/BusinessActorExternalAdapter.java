@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -73,6 +74,16 @@ public class BusinessActorExternalAdapter implements BusinessActorRepositoryPort
 
     @Override
     public Mono<BusinessActor> findById(UUID id, String jwtToken) {
+        return doFindByIdWithToken(id, jwtToken)
+                .onErrorResume(WebClientResponseException.class, ex -> {
+                    if (ex.getStatusCode().value() == 401 || ex.getStatusCode().value() == 403) {
+                        return doFindByIdWithToken(id, null);
+                    }
+                    return Mono.error(ex);
+                });
+    }
+
+    private Mono<BusinessActor> doFindByIdWithToken(UUID id, String jwtToken) {
         var requestSpec = getClient().get()
                 .uri("/api/v1/business-actors/{id}", id);
 
@@ -94,6 +105,16 @@ public class BusinessActorExternalAdapter implements BusinessActorRepositoryPort
 
     @Override
     public Mono<BusinessActor> findByUserId(UUID userId, String jwtToken) {
+        return doFindByUserIdWithToken(userId, jwtToken)
+                .onErrorResume(WebClientResponseException.class, ex -> {
+                    if (ex.getStatusCode().value() == 401 || ex.getStatusCode().value() == 403) {
+                        return doFindByUserIdWithToken(userId, null);
+                    }
+                    return Mono.error(ex);
+                });
+    }
+
+    private Mono<BusinessActor> doFindByUserIdWithToken(UUID userId, String jwtToken) {
         var requestSpec = getClient().get()
                 .uri("/api/v1/business-actors");
 

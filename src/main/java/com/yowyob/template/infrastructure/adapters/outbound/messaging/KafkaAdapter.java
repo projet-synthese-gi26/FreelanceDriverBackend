@@ -5,12 +5,14 @@ import com.yowyob.template.domain.ports.out.ProductEventPublisherPort;
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.core.reactive.ReactiveKafkaProducerTemplate;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
 @Component
 @RequiredArgsConstructor
+@ConditionalOnProperty(prefix = "application.kafka", name = "enabled", havingValue = "true")
 public class KafkaAdapter implements ProductEventPublisherPort {
 
     private final ReactiveKafkaProducerTemplate<String, Object> kafkaTemplate;

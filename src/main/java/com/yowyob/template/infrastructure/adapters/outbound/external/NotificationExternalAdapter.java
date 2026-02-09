@@ -1,16 +1,18 @@
 package com.yowyob.template.infrastructure.adapters.outbound.external;
 
+import com.yowyob.template.domain.model.AppNotification;
+import com.yowyob.template.domain.model.NotificationChannel;
 import com.yowyob.template.domain.ports.out.NotificationPort;
-import com.yowyob.template.infrastructure.adapters.outbound.external.dto.notification.NotificationCreatePullRequest;
-import com.yowyob.template.infrastructure.adapters.outbound.external.dto.notification.NotificationCreatePullResponse;
-import com.yowyob.template.infrastructure.adapters.outbound.external.dto.notification.NotificationSendRequest;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
-@Component
+import java.util.Map;
+import java.util.UUID;
+
+@Slf4j
 @RequiredArgsConstructor
 public class NotificationExternalAdapter implements NotificationPort {
 
@@ -27,22 +29,23 @@ public class NotificationExternalAdapter implements NotificationPort {
     }
 
     @Override
-    public Mono<NotificationCreatePullResponse> createPull(NotificationCreatePullRequest request) {
-        return client().post()
-                .uri("/api/v1/notifications")
-                .header("X-Service-Token", serviceToken)
-                .bodyValue(request)
-                .retrieve()
-                .bodyToMono(NotificationCreatePullResponse.class);
+    public Mono<AppNotification> notify(UUID userId,
+                                        NotificationChannel channel,
+                                        String type,
+                                        String title,
+                                        String body,
+                                        Map<String, Object> data) {
+        log.warn("External notification provider disabled/unavailable; skipping notify(type={})", type);
+        return Mono.empty();
     }
 
     @Override
-    public Mono<Void> send(NotificationSendRequest request) {
-        return client().post()
-                .uri("/api/v1/notifications/send")
-                .header("X-Service-Token", serviceToken)
-                .bodyValue(request)
-                .retrieve()
-                .bodyToMono(Void.class);
+    public Mono<Void> push(UUID userId,
+                           String type,
+                           String title,
+                           String body,
+                           Map<String, Object> data) {
+        log.warn("External notification provider disabled/unavailable; skipping push(type={})", type);
+        return Mono.empty();
     }
 }

@@ -28,6 +28,7 @@ public class SecurityConfig {
                                 "/api/v1/auth/register",
                                 "/api/v1/auth/register-init",
                                 "/api/v1/auth/verify-otp",
+                                "/api/v1/public/**",
                                 "/api-docs/**",
                                 "/swagger-ui.html",
                                 "/webjars/**",

@@ -10,6 +10,7 @@ import com.yowyob.template.domain.ports.out.ProductRepositoryPort;
 import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.request.CreatePlanningRequest;
 import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.request.UpdatePlanningRequest;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
@@ -21,6 +22,7 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class DriverPlanningService {
 
     private final BusinessActorRepositoryPort actorRepository;
@@ -103,8 +105,7 @@ public class DriverPlanningService {
     }
 
     public Mono<Product> updateDriverPlanning(UUID authUserId, UUID planningId, UpdatePlanningRequest request, String token) {
-        return assertDriver(authUserId, token)
-                .then(productRepository.findByIdAndProductType(planningId, PLANNING_TYPE))
+        return productRepository.findByIdAndProductType(planningId, PLANNING_TYPE)
                 .switchIfEmpty(Mono.error(new AccessDeniedException("Planning not found")))
                 .flatMap(existing -> {
                     UUID previousReservedById = existing.getReservedById();
@@ -143,19 +144,35 @@ public class DriverPlanningService {
                             return Mono.error(new AccessDeniedException("Only status/reservedById can be updated by non-owner"));
                         }
 
-                        UUID reservedByOrgId = existing.getReservedById();
-                        if (reservedByOrgId == null) {
-                            return Mono.error(new AccessDeniedException("Access denied"));
-                        }
+                        UUID reservedByUserId = existing.getReservedById();
 
-                        authorizationCheck = organisationRepository.findById(reservedByOrgId, token)
-                                .flatMap(org -> actorRepository.findById(org.getActorId(), token))
-                                .flatMap(actor -> {
-                                    if (actor.getUserId() == null || !actor.getUserId().equals(authUserId)) {
-                                        return Mono.error(new AccessDeniedException("Access denied"));
-                                    }
-                                    return Mono.empty();
-                                });
+                        // Cas "booking" initial: reservedById est encore null, un demandeur peut le renseigner
+                        // à condition que l'organisation fournie lui appartienne.
+                        if (reservedByUserId == null) {
+                            if (request.reservedById() == null) {
+                                return Mono.error(new AccessDeniedException("Access denied"));
+                            }
+                            authorizationCheck = Mono.defer(() -> {
+                                log.info("[PLANNING_BOOKING] initial booking check | userId={} | requestedReservedById={}", authUserId, request.reservedById());
+                                if (!authUserId.equals(request.reservedById())) {
+                                    return Mono.error(new AccessDeniedException(
+                                            "Access denied: reservedById must match authenticated userId. authUserId="
+                                                    + authUserId + ", requestedReservedById=" + request.reservedById()));
+                                }
+                                return Mono.empty();
+                            });
+                        } else {
+                            // Cas suivant: seul le demandeur (reservedById) peut mettre à jour (status)
+                            authorizationCheck = Mono.defer(() -> {
+                                log.info("[PLANNING_BOOKING] follow-up booking check | userId={} | reservedByUserId={}", authUserId, reservedByUserId);
+                                if (!authUserId.equals(reservedByUserId)) {
+                                    return Mono.error(new AccessDeniedException(
+                                            "Access denied: only reserved user can update. authUserId="
+                                                    + authUserId + ", reservedByUserId=" + reservedByUserId));
+                                }
+                                return Mono.empty();
+                            });
+                        }
                     }
 
                     return authorizationCheck.then(Mono.defer(() -> {
@@ -175,20 +192,17 @@ public class DriverPlanningService {
                         }
                     }
 
-                    Mono<Void> reservedByCheck = Mono.empty();
-                    if (request.reservedById() != null) {
-                        reservedByCheck = organisationRepository.findById(request.reservedById(), token)
-                                .switchIfEmpty(Mono.error(new IllegalArgumentException(
-                                        "Unknown organisation id: " + request.reservedById())))
-                                .then();
-                    }
-
-                    return reservedByCheck.then(Mono.defer(() -> {
+                    return Mono.defer(() -> {
                         if (request.reservedById() != null) {
                             planning.setReservedById(request.reservedById());
-                            if (planning.getStatus() == ProductStatus.Published
-                                    || planning.getStatus() == ProductStatus.Draft) {
-                                planning.setStatus(ProductStatus.PendingConfirmation);
+                            if (!isOwner) {
+                                // Booking: dès qu'un non-propriétaire pose reservedById, on passe en attente de confirmation driver.
+                                // On inclut PendingConfirmation car certains flows publient avec ce statut.
+                                if (planning.getStatus() == ProductStatus.Published
+                                        || planning.getStatus() == ProductStatus.Draft
+                                        || planning.getStatus() == ProductStatus.PendingConfirmation) {
+                                    planning.setStatus(ProductStatus.PendingDriverConfirmation);
+                                }
                             }
                         }
                         if (request.tripType() != null) planning.setTripType(request.tripType());
@@ -204,9 +218,9 @@ public class DriverPlanningService {
 
                         return productRepository.save(planning)
                                 .flatMap(saved -> notificationTriggerService
-                                        .onProductUpdated(PLANNING_TYPE, authUserId, previousReservedById, previousStatus, saved, token)
+                                        .onProductUpdated(PLANNING_TYPE, existing.getClientId(), previousReservedById, previousStatus, saved, token)
                                         .thenReturn(saved));
-                    }));
+                    });
                     }));
                 });
     }

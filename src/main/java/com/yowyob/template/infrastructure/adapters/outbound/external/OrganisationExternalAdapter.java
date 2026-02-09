@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -58,6 +59,16 @@ public class OrganisationExternalAdapter implements OrganisationRepositoryPort {
 
     @Override
     public Mono<Organisation> findById(UUID id, String jwtToken) {
+        return doFindByIdWithToken(id, jwtToken)
+                .onErrorResume(WebClientResponseException.class, ex -> {
+                    if (ex.getStatusCode().value() == 401 || ex.getStatusCode().value() == 403) {
+                        return doFindByIdWithToken(id, null);
+                    }
+                    return Mono.error(ex);
+                });
+    }
+
+    private Mono<Organisation> doFindByIdWithToken(UUID id, String jwtToken) {
         var requestSpec = getClient().get()
                 .uri("/api/v1/organizations/{id}", id);
 
@@ -79,11 +90,21 @@ public class OrganisationExternalAdapter implements OrganisationRepositoryPort {
 
     @Override
     public Mono<Organisation> findByActorId(UUID actorId, String jwtToken) {
+        return doFindByActorIdWithToken(actorId, jwtToken)
+                .onErrorResume(WebClientResponseException.class, ex -> {
+                    if (ex.getStatusCode().value() == 401 || ex.getStatusCode().value() == 403) {
+                        return doFindByActorIdWithToken(actorId, null);
+                    }
+                    return Mono.error(ex);
+                });
+    }
+
+    private Mono<Organisation> doFindByActorIdWithToken(UUID actorId, String jwtToken) {
         var requestSpec = getClient().get()
                 .uri(uriBuilder -> uriBuilder.path("/api/v1/organizations")
                         .queryParam("actorId", actorId)
                         .build());
-                        
+
         if (jwtToken != null && !jwtToken.isEmpty()) {
             String headerValue = jwtToken.startsWith("Bearer ") ? jwtToken : "Bearer " + jwtToken;
             requestSpec.header("Authorization", headerValue);

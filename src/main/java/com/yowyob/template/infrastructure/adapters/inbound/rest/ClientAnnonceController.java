@@ -44,7 +44,7 @@ public class ClientAnnonceController {
             @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
             @Parameter(hidden = true) @RequestHeader(name = "Authorization") String token
     ) {
-        if (principal == null) {
+        if (principal == null || principal.getAuthorities().stream().noneMatch(a -> "ROLE_CLIENT".equals(a.getAuthority()))) {
             return productService.getAllProducts()
                     .filter(product -> product instanceof com.yowyob.template.domain.model.Annonce);
         }

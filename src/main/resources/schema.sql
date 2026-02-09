@@ -1,6 +1,7 @@
 -- Nettoyage des anciennes tables si elles existent
 DROP TABLE IF EXISTS products CASCADE;
 DROP TABLE IF EXISTS user_devices CASCADE;
+DROP TABLE IF EXISTS app_notifications CASCADE;
 DROP TABLE IF EXISTS Review CASCADE;
 DROP TABLE IF EXISTS reactions CASCADE;
 DROP TABLE IF EXISTS Settings CASCADE;
@@ -136,3 +137,19 @@ CREATE TABLE IF NOT EXISTS user_devices (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     UNIQUE (fcm_token)
 );
+
+-- 7. TABLE APP_NOTIFICATIONS (PULL interne)
+
+CREATE TABLE IF NOT EXISTS app_notifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL,
+    channel TEXT NOT NULL,
+    type TEXT NOT NULL,
+    title TEXT,
+    body TEXT,
+    data TEXT,
+    is_read BOOLEAN DEFAULT false,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_app_notifications_user_created ON app_notifications(user_id, created_at DESC);

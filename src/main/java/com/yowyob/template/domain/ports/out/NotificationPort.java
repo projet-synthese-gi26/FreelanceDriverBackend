@@ -1,11 +1,23 @@
 package com.yowyob.template.domain.ports.out;
 
-import com.yowyob.template.infrastructure.adapters.outbound.external.dto.notification.NotificationCreatePullRequest;
-import com.yowyob.template.infrastructure.adapters.outbound.external.dto.notification.NotificationCreatePullResponse;
-import com.yowyob.template.infrastructure.adapters.outbound.external.dto.notification.NotificationSendRequest;
+import com.yowyob.template.domain.model.AppNotification;
+import com.yowyob.template.domain.model.NotificationChannel;
 import reactor.core.publisher.Mono;
 
+import java.util.Map;
+import java.util.UUID;
+
 public interface NotificationPort {
-    Mono<NotificationCreatePullResponse> createPull(NotificationCreatePullRequest request);
-    Mono<Void> send(NotificationSendRequest request);
+    Mono<AppNotification> notify(UUID userId,
+                                NotificationChannel channel,
+                                String type,
+                                String title,
+                                String body,
+                                Map<String, Object> data);
+
+    Mono<Void> push(UUID userId,
+                   String type,
+                   String title,
+                   String body,
+                   Map<String, Object> data);
 }

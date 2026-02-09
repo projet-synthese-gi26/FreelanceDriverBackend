@@ -2,12 +2,14 @@ package com.yowyob.template.infrastructure.adapters.inbound.kafka;
 
 import com.yowyob.template.domain.model.Product;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
+@ConditionalOnProperty(prefix = "application.kafka", name = "enabled", havingValue = "true")
 public class ProductEventConsumer {
 
     @Value("${application.kafka.topics.product-events}")

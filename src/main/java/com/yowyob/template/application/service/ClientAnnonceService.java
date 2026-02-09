@@ -10,6 +10,7 @@ import com.yowyob.template.domain.ports.out.ProductRepositoryPort;
 import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.request.CreateAnnonceRequest;
 import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.request.UpdateAnnonceRequest;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
@@ -21,6 +22,7 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ClientAnnonceService {
 
     private final BusinessActorRepositoryPort actorRepository;
@@ -96,8 +98,7 @@ public class ClientAnnonceService {
     }
 
     public Mono<Product> updateClientAnnonce(UUID authUserId, UUID annonceId, UpdateAnnonceRequest request, String token) {
-        return assertClient(authUserId, token)
-                .then(productRepository.findByIdAndProductType(annonceId, ANNONCE_TYPE))
+        return productRepository.findByIdAndProductType(annonceId, ANNONCE_TYPE)
                 .switchIfEmpty(Mono.error(new AccessDeniedException("Annonce not found")))
                 .flatMap(existing -> {
                     UUID previousReservedById = existing.getReservedById();
@@ -135,19 +136,35 @@ public class ClientAnnonceService {
                             return Mono.error(new AccessDeniedException("Only status/reservedById can be updated by non-owner"));
                         }
 
-                        UUID reservedByOrgId = existing.getReservedById();
-                        if (reservedByOrgId == null) {
-                            return Mono.error(new AccessDeniedException("Access denied"));
-                        }
+                        UUID reservedByUserId = existing.getReservedById();
 
-                        authorizationCheck = organisationRepository.findById(reservedByOrgId, token)
-                                .flatMap(org -> actorRepository.findById(org.getActorId(), token))
-                                .flatMap(actor -> {
-                                    if (actor.getUserId() == null || !actor.getUserId().equals(authUserId)) {
-                                        return Mono.error(new AccessDeniedException("Access denied"));
-                                    }
-                                    return Mono.empty();
-                                });
+                        // Cas "postulation" initiale: reservedById est encore null, un demandeur peut le renseigner
+                        // à condition que l'utilisateur corresponde à reservedById.
+                        if (reservedByUserId == null) {
+                            if (request.reservedById() == null) {
+                                return Mono.error(new AccessDeniedException("Access denied"));
+                            }
+                            authorizationCheck = Mono.defer(() -> {
+                                log.info("[ANNONCE_BOOKING] initial booking check | userId={} | requestedReservedById={}", authUserId, request.reservedById());
+                                if (!authUserId.equals(request.reservedById())) {
+                                    return Mono.error(new AccessDeniedException(
+                                            "Access denied: reservedById must match authenticated userId. authUserId="
+                                                    + authUserId + ", requestedReservedById=" + request.reservedById()));
+                                }
+                                return Mono.empty();
+                            });
+                        } else {
+                            // Cas suivant: seul le demandeur (reservedById) peut mettre à jour (status)
+                            authorizationCheck = Mono.defer(() -> {
+                                log.info("[ANNONCE_BOOKING] follow-up booking check | userId={} | reservedByUserId={}", authUserId, reservedByUserId);
+                                if (!authUserId.equals(reservedByUserId)) {
+                                    return Mono.error(new AccessDeniedException(
+                                            "Access denied: only reserved user can update. authUserId="
+                                                    + authUserId + ", reservedByUserId=" + reservedByUserId));
+                                }
+                                return Mono.empty();
+                            });
+                        }
                     }
 
                     return authorizationCheck.then(Mono.defer(() -> {
@@ -168,9 +185,27 @@ public class ClientAnnonceService {
                     }
                     if (request.reservedById() != null) {
                         annonce.setReservedById(request.reservedById());
-                        if (annonce.getStatus() == ProductStatus.Published
-                                || annonce.getStatus() == ProductStatus.Draft) {
-                            annonce.setStatus(ProductStatus.PendingConfirmation);
+                        if (!isOwner) {
+                            log.info("[ANNONCE_BOOKING] booking update | annonceId={} | authUserId={} | ownerClientId={} | ownerOrgId={} | requestedReservedById={} | previousReservedById={} | previousStatus={} | currentStatus(before)={}",
+                                    existing.getId(),
+                                    authUserId,
+                                    existing.getClientId(),
+                                    existing.getOrgId(),
+                                    request.reservedById(),
+                                    previousReservedById,
+                                    previousStatus,
+                                    annonce.getStatus());
+                            if (annonce.getStatus() == ProductStatus.Published
+                                    || annonce.getStatus() == ProductStatus.Draft
+                                    || annonce.getStatus() == ProductStatus.PendingConfirmation) {
+                                annonce.setStatus(ProductStatus.PendingConfirmation);
+                            }
+
+                            log.info("[ANNONCE_BOOKING] booking update applied | annonceId={} | ownerClientId={} | reservedById(after)={} | status(after)={}",
+                                    existing.getId(),
+                                    existing.getClientId(),
+                                    annonce.getReservedById(),
+                                    annonce.getStatus());
                         }
                     }
                     if (request.tripType() != null) annonce.setTripType(request.tripType());
@@ -185,7 +220,7 @@ public class ClientAnnonceService {
                     annonce.setUpdatedAt(Timestamp.from(Instant.now()));
                     return productRepository.save(annonce)
                             .flatMap(saved -> notificationTriggerService
-                                    .onProductUpdated(ANNONCE_TYPE, authUserId, previousReservedById, previousStatus, saved, token)
+                                    .onProductUpdated(ANNONCE_TYPE, saved.getClientId(), previousReservedById, previousStatus, saved, token)
                                     .thenReturn(saved));
                     }));
                 });

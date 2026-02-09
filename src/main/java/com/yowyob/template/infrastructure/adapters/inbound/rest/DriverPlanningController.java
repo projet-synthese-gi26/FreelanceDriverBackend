@@ -45,7 +45,7 @@ public class DriverPlanningController {
             @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
             ServerWebExchange exchange
     ) {
-        if (principal == null) {
+        if (principal == null || principal.getAuthorities().stream().noneMatch(a -> "ROLE_DRIVER".equals(a.getAuthority()))) {
             return productService.getAllProducts()
                     .filter(product -> product instanceof Planning);
         }

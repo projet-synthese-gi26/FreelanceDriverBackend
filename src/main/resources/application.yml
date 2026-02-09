@@ -25,7 +25,7 @@ spring:
       validation-query: SELECT 1
   sql:
     init:
-      mode: always
+      mode: never
 
   mail:
     host: ${SPRING_MAIL_HOST:smtp.gmail.com}
@@ -81,6 +81,10 @@ application:
     stock-service-url: http://${EXTERNAL_HOST:localhost}:8081
     notification-service-url: ${NOTIFICATION_SERVICE_URL:https://notification-service.pynfi.com}
     notification-service-token: ${NOTIFICATION_SERVICE_TOKEN:}
+  kafka:
+    enabled: false
+    topics:
+      product-events: product-events-topic
   notification:
     templates:
       pull:
@@ -97,9 +101,6 @@ application:
         annonce-accepted: ${NOTIF_TPL_PUSH_ANNONCE_ACCEPTED:}
         annonce-confirmed: ${NOTIF_TPL_PUSH_ANNONCE_CONFIRMED:}
         review-received: ${NOTIF_TPL_PUSH_REVIEW_RECEIVED:}
-  kafka:
-    topics:
-      product-events: product-events-topic
 
 management:
   endpoints:
@@ -115,6 +116,11 @@ management:
     export:
       prometheus:
         enabled: true
+
+logging:
+  level:
+    org.apache.kafka: WARN
+    org.springframework.kafka: WARN
 
 # RESILIENCE4J 
 resilience4j:
