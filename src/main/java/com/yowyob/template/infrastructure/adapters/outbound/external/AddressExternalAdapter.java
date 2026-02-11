@@ -19,7 +19,7 @@ public class AddressExternalAdapter implements AddressRepositoryPort {
 
     private final WebClient.Builder webClientBuilder;
 
-    @Value("${application.external.organization-service-url:https://organization-service.pynfi.com}")
+    @Value("${application.external.organization-service-url}")
     private String orgServiceUrl;
 
     private WebClient getClient() {

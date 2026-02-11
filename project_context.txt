@@ -1,5 +1,5 @@
 Project Context From: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre
-Generated On: mer. 11 févr. 2026 12:30:03 WAT
+Generated On: dim. 08 févr. 2026 17:27:32 WAT
 ===============================================
 Ignored Directory Patterns: .* node_modules vendor build dist target __pycache__ .next cache target storage
 Ignored File Patterns: *.log *.jar *.pdf *.class *.sqlite project_context.txt package-lock.json yarn.lock composer.lock *.ico pnpm-lock.yaml
@@ -14796,42 +14796,6 @@ public class AddressService implements createAddressUseCase {
 }
 // END OF FILE: src/main/java/com/yowyob/template/application/service/AddressService.java
 
-//---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/application/service/AppNotificationService.java
-
-package com.yowyob.template.application.service;
-
-import com.yowyob.template.domain.model.AppNotification;
-import com.yowyob.template.domain.ports.out.AppNotificationRepositoryPort;
-import com.yowyob.template.domain.ports.out.NotificationPublisherPort;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
-
-import java.util.UUID;
-
-@Service
-@RequiredArgsConstructor
-public class AppNotificationService {
-
-    private final AppNotificationRepositoryPort repository;
-    private final NotificationPublisherPort publisher;
-
-    public Flux<AppNotification> myNotifications(UUID userId) {
-        return repository.findByUserId(userId);
-    }
-
-    public Mono<AppNotification> markRead(UUID userId, UUID notificationId, boolean read) {
-        return repository.markRead(userId, notificationId, read)
-                .flatMap(updated -> publisher.publish(userId, updated).thenReturn(updated));
-    }
-
-    public Flux<AppNotification> stream(UUID userId) {
-        return publisher.subscribe(userId);
-    }
-}
-// END OF FILE: src/main/java/com/yowyob/template/application/service/AppNotificationService.java
-
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/application/service/AuthRegistrationService.java
 
 package com.yowyob.template.application.service;
@@ -15066,7 +15030,6 @@ import com.yowyob.template.domain.ports.out.ProductRepositoryPort;
 import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.request.CreateAnnonceRequest;
 import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.request.UpdateAnnonceRequest;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
@@ -15078,7 +15041,6 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
-@Slf4j
 public class ClientAnnonceService {
 
     private final BusinessActorRepositoryPort actorRepository;
@@ -15154,7 +15116,8 @@ public class ClientAnnonceService {
     }
 
     public Mono<Product> updateClientAnnonce(UUID authUserId, UUID annonceId, UpdateAnnonceRequest request, String token) {
-        return productRepository.findByIdAndProductType(annonceId, ANNONCE_TYPE)
+        return assertClient(authUserId, token)
+                .then(productRepository.findByIdAndProductType(annonceId, ANNONCE_TYPE))
                 .switchIfEmpty(Mono.error(new AccessDeniedException("Annonce not found")))
                 .flatMap(existing -> {
                     UUID previousReservedById = existing.getReservedById();
@@ -15192,35 +15155,19 @@ public class ClientAnnonceService {
                             return Mono.error(new AccessDeniedException("Only status/reservedById can be updated by non-owner"));
                         }
 
-                        UUID reservedByUserId = existing.getReservedById();
-
-                        // Cas "postulation" initiale: reservedById est encore null, un demandeur peut le renseigner
-                        // à condition que l'utilisateur corresponde à reservedById.
-                        if (reservedByUserId == null) {
-                            if (request.reservedById() == null) {
-                                return Mono.error(new AccessDeniedException("Access denied"));
-                            }
-                            authorizationCheck = Mono.defer(() -> {
-                                log.info("[ANNONCE_BOOKING] initial booking check | userId={} | requestedReservedById={}", authUserId, request.reservedById());
-                                if (!authUserId.equals(request.reservedById())) {
-                                    return Mono.error(new AccessDeniedException(
-                                            "Access denied: reservedById must match authenticated userId. authUserId="
-                                                    + authUserId + ", requestedReservedById=" + request.reservedById()));
-                                }
-                                return Mono.empty();
-                            });
-                        } else {
-                            // Cas suivant: seul le demandeur (reservedById) peut mettre à jour (status)
-                            authorizationCheck = Mono.defer(() -> {
-                                log.info("[ANNONCE_BOOKING] follow-up booking check | userId={} | reservedByUserId={}", authUserId, reservedByUserId);
-                                if (!authUserId.equals(reservedByUserId)) {
-                                    return Mono.error(new AccessDeniedException(
-                                            "Access denied: only reserved user can update. authUserId="
-                                                    + authUserId + ", reservedByUserId=" + reservedByUserId));
-                                }
-                                return Mono.empty();
-                            });
+                        UUID reservedByOrgId = existing.getReservedById();
+                        if (reservedByOrgId == null) {
+                            return Mono.error(new AccessDeniedException("Access denied"));
                         }
+
+                        authorizationCheck = organisationRepository.findById(reservedByOrgId, token)
+                                .flatMap(org -> actorRepository.findById(org.getActorId(), token))
+                                .flatMap(actor -> {
+                                    if (actor.getUserId() == null || !actor.getUserId().equals(authUserId)) {
+                                        return Mono.error(new AccessDeniedException("Access denied"));
+                                    }
+                                    return Mono.empty();
+                                });
                     }
 
                     return authorizationCheck.then(Mono.defer(() -> {
@@ -15241,27 +15188,9 @@ public class ClientAnnonceService {
                     }
                     if (request.reservedById() != null) {
                         annonce.setReservedById(request.reservedById());
-                        if (!isOwner) {
-                            log.info("[ANNONCE_BOOKING] booking update | annonceId={} | authUserId={} | ownerClientId={} | ownerOrgId={} | requestedReservedById={} | previousReservedById={} | previousStatus={} | currentStatus(before)={}",
-                                    existing.getId(),
-                                    authUserId,
-                                    existing.getClientId(),
-                                    existing.getOrgId(),
-                                    request.reservedById(),
-                                    previousReservedById,
-                                    previousStatus,
-                                    annonce.getStatus());
-                            if (annonce.getStatus() == ProductStatus.Published
-                                    || annonce.getStatus() == ProductStatus.Draft
-                                    || annonce.getStatus() == ProductStatus.PendingConfirmation) {
-                                annonce.setStatus(ProductStatus.PendingConfirmation);
-                            }
-
-                            log.info("[ANNONCE_BOOKING] booking update applied | annonceId={} | ownerClientId={} | reservedById(after)={} | status(after)={}",
-                                    existing.getId(),
-                                    existing.getClientId(),
-                                    annonce.getReservedById(),
-                                    annonce.getStatus());
+                        if (annonce.getStatus() == ProductStatus.Published
+                                || annonce.getStatus() == ProductStatus.Draft) {
+                            annonce.setStatus(ProductStatus.PendingConfirmation);
                         }
                     }
                     if (request.tripType() != null) annonce.setTripType(request.tripType());
@@ -15276,7 +15205,7 @@ public class ClientAnnonceService {
                     annonce.setUpdatedAt(Timestamp.from(Instant.now()));
                     return productRepository.save(annonce)
                             .flatMap(saved -> notificationTriggerService
-                                    .onProductUpdated(ANNONCE_TYPE, saved.getClientId(), previousReservedById, previousStatus, saved, token)
+                                    .onProductUpdated(ANNONCE_TYPE, authUserId, previousReservedById, previousStatus, saved, token)
                                     .thenReturn(saved));
                     }));
                 });
@@ -15563,7 +15492,6 @@ import com.yowyob.template.domain.ports.out.ProductRepositoryPort;
 import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.request.CreatePlanningRequest;
 import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.request.UpdatePlanningRequest;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
@@ -15575,7 +15503,6 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
-@Slf4j
 public class DriverPlanningService {
 
     private final BusinessActorRepositoryPort actorRepository;
@@ -15658,7 +15585,8 @@ public class DriverPlanningService {
     }
 
     public Mono<Product> updateDriverPlanning(UUID authUserId, UUID planningId, UpdatePlanningRequest request, String token) {
-        return productRepository.findByIdAndProductType(planningId, PLANNING_TYPE)
+        return assertDriver(authUserId, token)
+                .then(productRepository.findByIdAndProductType(planningId, PLANNING_TYPE))
                 .switchIfEmpty(Mono.error(new AccessDeniedException("Planning not found")))
                 .flatMap(existing -> {
                     UUID previousReservedById = existing.getReservedById();
@@ -15697,35 +15625,19 @@ public class DriverPlanningService {
                             return Mono.error(new AccessDeniedException("Only status/reservedById can be updated by non-owner"));
                         }
 
-                        UUID reservedByUserId = existing.getReservedById();
-
-                        // Cas "booking" initial: reservedById est encore null, un demandeur peut le renseigner
-                        // à condition que l'organisation fournie lui appartienne.
-                        if (reservedByUserId == null) {
-                            if (request.reservedById() == null) {
-                                return Mono.error(new AccessDeniedException("Access denied"));
-                            }
-                            authorizationCheck = Mono.defer(() -> {
-                                log.info("[PLANNING_BOOKING] initial booking check | userId={} | requestedReservedById={}", authUserId, request.reservedById());
-                                if (!authUserId.equals(request.reservedById())) {
-                                    return Mono.error(new AccessDeniedException(
-                                            "Access denied: reservedById must match authenticated userId. authUserId="
-                                                    + authUserId + ", requestedReservedById=" + request.reservedById()));
-                                }
-                                return Mono.empty();
-                            });
-                        } else {
-                            // Cas suivant: seul le demandeur (reservedById) peut mettre à jour (status)
-                            authorizationCheck = Mono.defer(() -> {
-                                log.info("[PLANNING_BOOKING] follow-up booking check | userId={} | reservedByUserId={}", authUserId, reservedByUserId);
-                                if (!authUserId.equals(reservedByUserId)) {
-                                    return Mono.error(new AccessDeniedException(
-                                            "Access denied: only reserved user can update. authUserId="
-                                                    + authUserId + ", reservedByUserId=" + reservedByUserId));
-                                }
-                                return Mono.empty();
-                            });
+                        UUID reservedByOrgId = existing.getReservedById();
+                        if (reservedByOrgId == null) {
+                            return Mono.error(new AccessDeniedException("Access denied"));
                         }
+
+                        authorizationCheck = organisationRepository.findById(reservedByOrgId, token)
+                                .flatMap(org -> actorRepository.findById(org.getActorId(), token))
+                                .flatMap(actor -> {
+                                    if (actor.getUserId() == null || !actor.getUserId().equals(authUserId)) {
+                                        return Mono.error(new AccessDeniedException("Access denied"));
+                                    }
+                                    return Mono.empty();
+                                });
                     }
 
                     return authorizationCheck.then(Mono.defer(() -> {
@@ -15745,17 +15657,20 @@ public class DriverPlanningService {
                         }
                     }
 
-                    return Mono.defer(() -> {
+                    Mono<Void> reservedByCheck = Mono.empty();
+                    if (request.reservedById() != null) {
+                        reservedByCheck = organisationRepository.findById(request.reservedById(), token)
+                                .switchIfEmpty(Mono.error(new IllegalArgumentException(
+                                        "Unknown organisation id: " + request.reservedById())))
+                                .then();
+                    }
+
+                    return reservedByCheck.then(Mono.defer(() -> {
                         if (request.reservedById() != null) {
                             planning.setReservedById(request.reservedById());
-                            if (!isOwner) {
-                                // Booking: dès qu'un non-propriétaire pose reservedById, on passe en attente de confirmation driver.
-                                // On inclut PendingConfirmation car certains flows publient avec ce statut.
-                                if (planning.getStatus() == ProductStatus.Published
-                                        || planning.getStatus() == ProductStatus.Draft
-                                        || planning.getStatus() == ProductStatus.PendingConfirmation) {
-                                    planning.setStatus(ProductStatus.PendingDriverConfirmation);
-                                }
+                            if (planning.getStatus() == ProductStatus.Published
+                                    || planning.getStatus() == ProductStatus.Draft) {
+                                planning.setStatus(ProductStatus.PendingConfirmation);
                             }
                         }
                         if (request.tripType() != null) planning.setTripType(request.tripType());
@@ -15771,9 +15686,9 @@ public class DriverPlanningService {
 
                         return productRepository.save(planning)
                                 .flatMap(saved -> notificationTriggerService
-                                        .onProductUpdated(PLANNING_TYPE, existing.getClientId(), previousReservedById, previousStatus, saved, token)
+                                        .onProductUpdated(PLANNING_TYPE, authUserId, previousReservedById, previousStatus, saved, token)
                                         .thenReturn(saved));
-                    });
+                    }));
                     }));
                 });
     }
@@ -15958,12 +15873,16 @@ package com.yowyob.template.application.service;
 
 import com.yowyob.template.domain.model.*;
 import com.yowyob.template.domain.ports.out.*;
+import com.yowyob.template.infrastructure.adapters.outbound.external.dto.notification.NotificationCreatePullRequest;
+import com.yowyob.template.infrastructure.adapters.outbound.external.dto.notification.NotificationSendRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -15979,6 +15898,42 @@ public class NotificationTriggerService {
     private final OrganisationRepositoryPort organisationRepository;
     private final BusinessActorRepositoryPort actorRepository;
 
+    @Value("${application.notification.templates.pull.planning-requested:}")
+    private String tplPullPlanningRequested;
+
+    @Value("${application.notification.templates.push.planning-requested:}")
+    private String tplPushPlanningRequested;
+
+    @Value("${application.notification.templates.pull.planning-accepted:}")
+    private String tplPullPlanningAccepted;
+
+    @Value("${application.notification.templates.push.planning-accepted:}")
+    private String tplPushPlanningAccepted;
+
+    @Value("${application.notification.templates.pull.planning-confirmed:}")
+    private String tplPullPlanningConfirmed;
+
+    @Value("${application.notification.templates.push.planning-confirmed:}")
+    private String tplPushPlanningConfirmed;
+
+    @Value("${application.notification.templates.pull.annonce-accepted:}")
+    private String tplPullAnnonceAccepted;
+
+    @Value("${application.notification.templates.push.annonce-accepted:}")
+    private String tplPushAnnonceAccepted;
+
+    @Value("${application.notification.templates.pull.annonce-confirmed:}")
+    private String tplPullAnnonceConfirmed;
+
+    @Value("${application.notification.templates.push.annonce-confirmed:}")
+    private String tplPushAnnonceConfirmed;
+
+    @Value("${application.notification.templates.pull.review-received:}")
+    private String tplPullReviewReceived;
+
+    @Value("${application.notification.templates.push.review-received:}")
+    private String tplPushReviewReceived;
+
     public Mono<Void> onProductUpdated(String productType,
                                       UUID ownerUserId,
                                       UUID previousReservedByOrgId,
@@ -15986,58 +15941,39 @@ public class NotificationTriggerService {
                                       Product updated,
                                       String jwtToken) {
 
-        UUID newReservedByUserId = updated.getReservedById();
+        UUID newReservedByOrgId = updated.getReservedById();
         ProductStatus newStatus = updated.getStatus();
 
-        ProductStatus expectedPendingStatus = "ANNONCE".equalsIgnoreCase(productType)
-                ? ProductStatus.PendingConfirmation
-                : ProductStatus.PendingDriverConfirmation;
-
-        boolean reservedChanged = (previousReservedByOrgId == null && newReservedByUserId != null)
-                || (previousReservedByOrgId != null && !previousReservedByOrgId.equals(newReservedByUserId));
+        boolean reservedChanged = (previousReservedByOrgId == null && newReservedByOrgId != null)
+                || (previousReservedByOrgId != null && !previousReservedByOrgId.equals(newReservedByOrgId));
 
         Mono<Void> notifyOnReservation = Mono.empty();
-        boolean pendingTransition = newReservedByUserId != null
-                && newStatus == expectedPendingStatus
-                && previousStatus != expectedPendingStatus;
-
-        if ((reservedChanged || pendingTransition)
-                && newReservedByUserId != null
-                && newStatus == expectedPendingStatus) {
-            log.info("[NOTIF] reservation requested | productType={} | productId={} | ownerOrgId={} | reservedByUserId={} | newStatus={} | previousReservedById={} | previousStatus={}",
-                    productType,
-                    updated.getId(),
-                    updated.getOrgId(),
-                    newReservedByUserId,
-                    newStatus,
-                    previousReservedByOrgId,
-                    previousStatus);
-            // Une réservation / postulation vient d'être initiée (via PUT):
-            // - PLANNING: client réserve => notifier le driver propriétaire
-            // - ANNONCE: driver postule => notifier le client propriétaire
-            notifyOnReservation = Mono.justOrEmpty(ownerUserId)
-                    .doOnNext(id -> log.info("[NOTIF] ownerUserId provided: {}", id))
-                    .switchIfEmpty(resolveOwnerUserId(updated.getOrgId(), jwtToken))
-                    .doOnNext(targetOwnerUserId -> log.info("[NOTIF] target owner userId resolved: {}", targetOwnerUserId))
-                    .switchIfEmpty(Mono.defer(() -> {
-                        log.warn("[NOTIF] cannot resolve owner userId; skipping notification | productType={} | productId={} | ownerOrgId={}",
-                                productType,
-                                updated.getId(),
-                                updated.getOrgId());
-                        return Mono.empty();
-                    }))
-                    .flatMap(targetOwnerUserId -> buildReservationRequestedData(productType, updated, newReservedByUserId, jwtToken)
-                            .flatMap(data -> notifyUserPullAndPush(
-                                    targetOwnerUserId,
-                                    productType + "_REQUESTED",
-                                    "Nouvelle demande",
-                                    "Une demande a été effectuée. Tu peux accepter, refuser ou voir les détails.",
-                                    data
-                            )))
-                    .onErrorResume(e -> {
-                        log.warn("[NOTIF] reservation notification failed: {}", e.getMessage());
-                        return Mono.empty();
-                    });
+        if (reservedChanged && newReservedByOrgId != null && newStatus == ProductStatus.PendingConfirmation) {
+            if ("PLANNING".equalsIgnoreCase(productType)) {
+                // Client postule au planning du driver => notifier le driver (ownerUserId)
+                notifyOnReservation = notifyUserPullAndPush(
+                        ownerUserId,
+                        tplPullPlanningRequested,
+                        tplPushPlanningRequested,
+                        Map.of(
+                                "productId", updated.getId().toString(),
+                                "productType", productType,
+                                "status", newStatus != null ? newStatus.name() : null
+                        )
+                );
+            } else if ("ANNONCE".equalsIgnoreCase(productType)) {
+                // Driver accepte une annonce (ou est sélectionné) => notifier le client (ownerUserId)
+                notifyOnReservation = notifyUserPullAndPush(
+                        ownerUserId,
+                        tplPullAnnonceAccepted,
+                        tplPushAnnonceAccepted,
+                        Map.of(
+                                "productId", updated.getId().toString(),
+                                "productType", productType,
+                                "status", newStatus != null ? newStatus.name() : null
+                        )
+                );
+            }
         }
 
         boolean statusChanged = previousStatus != null && newStatus != null && previousStatus != newStatus;
@@ -16047,41 +15983,82 @@ public class NotificationTriggerService {
 
         Mono<Void> notifyOnStatus = Mono.empty();
         if ("PLANNING".equalsIgnoreCase(productType)) {
-            if (newStatus == ProductStatus.Confirmed) {
-                // Le driver accepte (PUT) => notifier le client demandeur
-                notifyOnStatus = resolveReservedByUserId(newReservedByUserId)
-                        .flatMap(clientUserId -> buildReservationDecisionData(productType, updated, newReservedByUserId)
-                                .flatMap(data -> notifyUserPullAndPush(
-                                        clientUserId,
-                                        productType + "_CONFIRMED",
-                                        "Demande acceptée",
-                                        "Ta demande a été acceptée. Tu peux voir les détails.",
-                                        data
-                                )));
+            if (newStatus == ProductStatus.PendingDriverConfirmation) {
+                // Driver accepte la postulation => notifier le client (reservedByOrgId -> userId)
+                notifyOnStatus = resolveReservedByUserId(newReservedByOrgId)
+                        .flatMap(clientUserId -> notifyUserPullAndPush(
+                                clientUserId,
+                                tplPullPlanningAccepted,
+                                tplPushPlanningAccepted,
+                                Map.of(
+                                        "productId", updated.getId().toString(),
+                                        "productType", productType,
+                                        "status", newStatus.name()
+                                )
+                        ));
+            } else if (newStatus == ProductStatus.Confirmed) {
+                // Client confirme => notifier le driver + le client
+                Mono<Void> n1 = notifyUserPullAndPush(
+                        ownerUserId,
+                        tplPullPlanningConfirmed,
+                        tplPushPlanningConfirmed,
+                        Map.of(
+                                "productId", updated.getId().toString(),
+                                "productType", productType,
+                                "status", newStatus.name()
+                        )
+                );
+                Mono<Void> n2 = resolveReservedByUserId(newReservedByOrgId)
+                        .flatMap(clientUserId -> notifyUserPullAndPush(
+                                clientUserId,
+                                tplPullPlanningConfirmed,
+                                tplPushPlanningConfirmed,
+                                Map.of(
+                                        "productId", updated.getId().toString(),
+                                        "productType", productType,
+                                        "status", newStatus.name()
+                                )
+                        ));
+                notifyOnStatus = n1.then(n2);
             }
         } else if ("ANNONCE".equalsIgnoreCase(productType)) {
-            if (newStatus == ProductStatus.Confirmed) {
-                // Le client accepte (PUT) => notifier le driver demandeur
-                notifyOnStatus = resolveReservedByUserId(newReservedByUserId)
-                        .flatMap(driverUserId -> buildReservationDecisionData(productType, updated, newReservedByUserId)
-                                .flatMap(data -> notifyUserPullAndPush(
-                                        driverUserId,
-                                        productType + "_CONFIRMED",
-                                        "Demande acceptée",
-                                        "Ta demande a été acceptée. Tu peux voir les détails.",
-                                        data
-                                )));
-            } else if (previousStatus == ProductStatus.PendingConfirmation && newStatus == ProductStatus.Published) {
-                // Le client refuse (PUT) => notifier le driver demandeur
-                notifyOnStatus = resolveReservedByUserId(previousReservedByOrgId)
-                        .flatMap(driverUserId -> buildReservationDecisionData(productType, updated, previousReservedByOrgId)
-                                .flatMap(data -> notifyUserPullAndPush(
-                                        driverUserId,
-                                        productType + "_REJECTED",
-                                        "Demande refusée",
-                                        "Ta demande a été refusée.",
-                                        data
-                                )));
+            if (newStatus == ProductStatus.PendingDriverConfirmation) {
+                // Client confirme la postulation => notifier le driver (reservedByOrgId -> userId)
+                notifyOnStatus = resolveReservedByUserId(newReservedByOrgId)
+                        .flatMap(driverUserId -> notifyUserPullAndPush(
+                                driverUserId,
+                                tplPullAnnonceConfirmed,
+                                tplPushAnnonceConfirmed,
+                                Map.of(
+                                        "productId", updated.getId().toString(),
+                                        "productType", productType,
+                                        "status", newStatus.name()
+                                )
+                        ));
+            } else if (newStatus == ProductStatus.Confirmed) {
+                // Driver confirme => notifier le client + le driver
+                Mono<Void> n1 = notifyUserPullAndPush(
+                        ownerUserId,
+                        tplPullAnnonceConfirmed,
+                        tplPushAnnonceConfirmed,
+                        Map.of(
+                                "productId", updated.getId().toString(),
+                                "productType", productType,
+                                "status", newStatus.name()
+                        )
+                );
+                Mono<Void> n2 = resolveReservedByUserId(newReservedByOrgId)
+                        .flatMap(driverUserId -> notifyUserPullAndPush(
+                                driverUserId,
+                                tplPullAnnonceConfirmed,
+                                tplPushAnnonceConfirmed,
+                                Map.of(
+                                        "productId", updated.getId().toString(),
+                                        "productType", productType,
+                                        "status", newStatus.name()
+                                )
+                        ));
+                notifyOnStatus = n1.then(n2);
             }
         }
 
@@ -16092,9 +16069,8 @@ public class NotificationTriggerService {
         return resolveReviewTargetUserId(review)
                 .flatMap(targetUserId -> notifyUserPullAndPush(
                         targetUserId,
-                        "REVIEW_RECEIVED",
-                        "Nouvel avis",
-                        "Tu as reçu un nouvel avis. Tu peux consulter les détails.",
+                        tplPullReviewReceived,
+                        tplPushReviewReceived,
                         buildReviewData(review)
                 ))
                 .onErrorResume(e -> {
@@ -16132,86 +16108,67 @@ public class NotificationTriggerService {
     }
 
     private Mono<Void> notifyUserPullAndPush(UUID userId,
-                                            String type,
-                                            String title,
-                                            String body,
+                                            String pullTemplateId,
+                                            String pushTemplateId,
                                             Map<String, Object> data) {
 
-        Mono<Void> pullMono = notificationPort
-                .notify(userId, NotificationChannel.PULL, type, title, body, data)
-                .then();
+        Mono<Void> pullMono = Mono.empty();
+        UUID pullTpl = parseUuidOrNull(pullTemplateId);
+        if (pullTpl != null) {
+            pullMono = notificationPort.createPull(new NotificationCreatePullRequest(
+                    "PULL",
+                    pullTpl,
+                    userId,
+                    data
+            )).then();
+        }
 
-        // PUSH interne: publication temps réel SSE + (optionnel) futur FCM
-        Mono<Void> pushMono = userDeviceRepository.findByUserId(userId)
-                .map(UserDevice::getFcmToken)
-                .filter(token -> token != null && !token.isBlank())
-                .hasElements()
-                .flatMap(hasDevice -> {
-                    if (!hasDevice) {
-                        return Mono.empty();
-                    }
-                    return notificationPort.push(userId, type, title, body, data);
-                });
+        Mono<Void> pushMono = Mono.empty();
+        UUID pushTpl = parseUuidOrNull(pushTemplateId);
+        if (pushTpl != null) {
+            pushMono = userDeviceRepository.findByUserId(userId)
+                    .map(UserDevice::getFcmToken)
+                    .filter(token -> token != null && !token.isBlank())
+                    .collectList()
+                    .flatMap(tokens -> {
+                        if (tokens.isEmpty()) {
+                            return Mono.empty();
+                        }
+                        return notificationPort.send(new NotificationSendRequest(
+                                "PUSH",
+                                pushTpl,
+                                tokens,
+                                data
+                        ));
+                    });
+        }
 
         return pullMono.then(pushMono);
     }
 
-    private Mono<UUID> resolveOwnerUserId(UUID ownerOrgId, String jwtToken) {
-        if (ownerOrgId == null) {
-            return Mono.error(new IllegalArgumentException("ownerOrgId is required"));
+    private UUID parseUuidOrNull(String value) {
+        if (value == null) {
+            return null;
         }
+        String v = value.trim();
+        if (v.isEmpty() || "0".equals(v)) {
+            return null;
+        }
+        try {
+            return UUID.fromString(v);
+        } catch (IllegalArgumentException ex) {
+            log.warn("Invalid template UUID: {}", v);
+            return null;
+        }
+    }
 
-        // 1) Essaye via repositories locaux (pas de token)
-        Mono<UUID> local = organisationRepository.findById(ownerOrgId)
+    private Mono<UUID> resolveReservedByUserId(UUID reservedByOrgId) {
+        if (reservedByOrgId == null) {
+            return Mono.error(new IllegalArgumentException("reservedByOrgId is required"));
+        }
+        return organisationRepository.findById(reservedByOrgId)
                 .flatMap(org -> actorRepository.findById(org.getActorId()))
                 .map(BusinessActor::getUserId);
-
-        // 2) Fallback via appels protégés (token)
-        Mono<UUID> remote = organisationRepository.findById(ownerOrgId, jwtToken)
-                .flatMap(org -> actorRepository.findById(org.getActorId(), jwtToken))
-                .map(BusinessActor::getUserId);
-
-        return local
-                .switchIfEmpty(remote)
-                .doOnError(e -> log.warn("[NOTIF] resolveOwnerUserId failed for ownerOrgId={}: {}", ownerOrgId, e.getMessage()));
-    }
-
-    private Mono<Map<String, Object>> buildReservationRequestedData(String productType,
-                                                                    Product updated,
-                                                                    UUID reservedByUserId,
-                                                                    String jwtToken) {
-        return actorRepository.findByUserId(reservedByUserId, jwtToken)
-                .map(actor -> {
-                    Map<String, Object> data = new HashMap<>();
-                    data.put("action", "RESPOND");
-                    data.put("productId", updated.getId() != null ? updated.getId().toString() : null);
-                    data.put("productType", productType);
-                    data.put("status", updated.getStatus() != null ? updated.getStatus().name() : null);
-                    data.put("fromUserId", reservedByUserId.toString());
-                    data.put("fromActorId", actor.getId() != null ? actor.getId().toString() : null);
-                    data.put("detailsActorId", actor.getId() != null ? actor.getId().toString() : null);
-                    return data;
-                });
-    }
-
-    private Mono<Map<String, Object>> buildReservationDecisionData(String productType,
-                                                                   Product updated,
-                                                                   UUID reservedByUserId) {
-        Map<String, Object> data = new HashMap<>();
-        data.put("action", "VIEW");
-        data.put("productId", updated.getId() != null ? updated.getId().toString() : null);
-        data.put("productType", productType);
-        data.put("status", updated.getStatus() != null ? updated.getStatus().name() : null);
-        data.put("fromOrgId", updated.getOrgId() != null ? updated.getOrgId().toString() : null);
-        data.put("reservedByUserId", reservedByUserId != null ? reservedByUserId.toString() : null);
-        return Mono.just(data);
-    }
-
-    private Mono<UUID> resolveReservedByUserId(UUID reservedByUserId) {
-        if (reservedByUserId == null) {
-            return Mono.error(new IllegalArgumentException("reservedByUserId is required"));
-        }
-        return Mono.just(reservedByUserId);
     }
 }
 // END OF FILE: src/main/java/com/yowyob/template/application/service/NotificationTriggerService.java
@@ -17485,36 +17442,6 @@ public class Annonce extends Product {
     private String cost;
     private String baggageInfo;
 }// END OF FILE: src/main/java/com/yowyob/template/domain/model/Annonce.java
-
-//---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/domain/model/AppNotification.java
-
-package com.yowyob.template.domain.model;
-
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-import java.time.OffsetDateTime;
-import java.util.Map;
-import java.util.UUID;
-
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class AppNotification {
-    private UUID id;
-    private UUID userId;
-    private NotificationChannel channel;
-    private String type;
-    private String title;
-    private String body;
-    private Map<String, Object> data;
-    private boolean read;
-    private OffsetDateTime createdAt;
-}
-// END OF FILE: src/main/java/com/yowyob/template/domain/model/AppNotification.java
 
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/domain/model/BusinessActor.java
 
@@ -19109,23 +19036,6 @@ public interface AddressRepositoryPort {
 }
 // END OF FILE: src/main/java/com/yowyob/template/domain/ports/out/AddressRepositoryPort.java
 
-//---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/domain/ports/out/AppNotificationRepositoryPort.java
-
-package com.yowyob.template.domain.ports.out;
-
-import com.yowyob.template.domain.model.AppNotification;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
-
-import java.util.UUID;
-
-public interface AppNotificationRepositoryPort {
-    Mono<AppNotification> save(AppNotification notification);
-    Flux<AppNotification> findByUserId(UUID userId);
-    Mono<AppNotification> markRead(UUID userId, UUID notificationId, boolean read);
-}
-// END OF FILE: src/main/java/com/yowyob/template/domain/ports/out/AppNotificationRepositoryPort.java
-
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/domain/ports/out/AuthClientPort.java
 
 package com.yowyob.template.domain.ports.out;
@@ -19222,44 +19132,16 @@ public interface ContactRepositoryPort {
 
 package com.yowyob.template.domain.ports.out;
 
-import com.yowyob.template.domain.model.AppNotification;
-import com.yowyob.template.domain.model.NotificationChannel;
+import com.yowyob.template.infrastructure.adapters.outbound.external.dto.notification.NotificationCreatePullRequest;
+import com.yowyob.template.infrastructure.adapters.outbound.external.dto.notification.NotificationCreatePullResponse;
+import com.yowyob.template.infrastructure.adapters.outbound.external.dto.notification.NotificationSendRequest;
 import reactor.core.publisher.Mono;
-
-import java.util.Map;
-import java.util.UUID;
 
 public interface NotificationPort {
-    Mono<AppNotification> notify(UUID userId,
-                                NotificationChannel channel,
-                                String type,
-                                String title,
-                                String body,
-                                Map<String, Object> data);
-
-    Mono<Void> push(UUID userId,
-                   String type,
-                   String title,
-                   String body,
-                   Map<String, Object> data);
+    Mono<NotificationCreatePullResponse> createPull(NotificationCreatePullRequest request);
+    Mono<Void> send(NotificationSendRequest request);
 }
 // END OF FILE: src/main/java/com/yowyob/template/domain/ports/out/NotificationPort.java
-
-//---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/domain/ports/out/NotificationPublisherPort.java
-
-package com.yowyob.template.domain.ports.out;
-
-import com.yowyob.template.domain.model.AppNotification;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
-
-import java.util.UUID;
-
-public interface NotificationPublisherPort {
-    Mono<Void> publish(UUID userId, AppNotification notification);
-    Flux<AppNotification> subscribe(UUID userId);
-}
-// END OF FILE: src/main/java/com/yowyob/template/domain/ports/out/NotificationPublisherPort.java
 
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/domain/ports/out/OrganisationRepositoryPort.java
 
@@ -19577,14 +19459,12 @@ package com.yowyob.template.infrastructure.adapters.inbound.kafka;
 
 import com.yowyob.template.domain.model.Product;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
-@ConditionalOnProperty(prefix = "application.kafka", name = "enabled", havingValue = "true")
 public class ProductEventConsumer {
 
     @Value("${application.kafka.topics.product-events}")
@@ -19603,61 +19483,6 @@ public class ProductEventConsumer {
              product.getTitle(), price);
     }
 }// END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/inbound/kafka/ProductEventConsumer.java
-
-//---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/AppNotificationController.java
-
-package com.yowyob.template.infrastructure.adapters.inbound.rest;
-
-import com.yowyob.template.application.service.AppNotificationService;
-import com.yowyob.template.domain.model.AppNotification;
-import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.MarkNotificationReadRequest;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
-import org.springframework.http.MediaType;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.oauth2.core.OAuth2AuthenticatedPrincipal;
-import org.springframework.web.bind.annotation.*;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
-
-import java.util.UUID;
-
-@RestController
-@RequestMapping("/api/v1/notifications")
-@RequiredArgsConstructor
-@Tag(name = "Notifications", description = "Centre de notifications (PULL) + stream (push in-app)")
-public class AppNotificationController {
-
-    private final AppNotificationService service;
-
-    @GetMapping("/me")
-    @Operation(summary = "Lister mes notifications")
-    public Flux<AppNotification> me(@AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal) {
-        UUID userId = UUID.fromString(principal.getAttribute("sub"));
-        return service.myNotifications(userId);
-    }
-
-    @PatchMapping("/{id}/read")
-    @Operation(summary = "Marquer une notification lue/non lue")
-    public Mono<AppNotification> markRead(
-            @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
-            @PathVariable("id") UUID id,
-            @Valid @RequestBody MarkNotificationReadRequest request
-    ) {
-        UUID userId = UUID.fromString(principal.getAttribute("sub"));
-        return service.markRead(userId, id, request.read());
-    }
-
-    @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    @Operation(summary = "Stream temps réel (SSE)")
-    public Flux<AppNotification> stream(@AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal) {
-        UUID userId = UUID.fromString(principal.getAttribute("sub"));
-        return service.stream(userId);
-    }
-}
-// END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/AppNotificationController.java
 
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/AuthController.java
 
@@ -19799,7 +19624,7 @@ public class ClientAnnonceController {
             @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
             @Parameter(hidden = true) @RequestHeader(name = "Authorization") String token
     ) {
-        if (principal == null || principal.getAuthorities().stream().noneMatch(a -> "ROLE_CLIENT".equals(a.getAuthority()))) {
+        if (principal == null) {
             return productService.getAllProducts()
                     .filter(product -> product instanceof com.yowyob.template.domain.model.Annonce);
         }
@@ -20124,7 +19949,7 @@ public class DriverPlanningController {
             @AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal,
             ServerWebExchange exchange
     ) {
-        if (principal == null || principal.getAuthorities().stream().noneMatch(a -> "ROLE_DRIVER".equals(a.getAuthority()))) {
+        if (principal == null) {
             return productService.getAllProducts()
                     .filter(product -> product instanceof Planning);
         }
@@ -20914,17 +20739,6 @@ public record LoginRequest(
     @NotBlank String password
 ) {}
 // END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/dto/LoginRequest.java
-
-//---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/dto/MarkNotificationReadRequest.java
-
-package com.yowyob.template.infrastructure.adapters.inbound.rest.dto;
-
-import jakarta.validation.constraints.NotNull;
-
-public record MarkNotificationReadRequest(
-        @NotNull Boolean read
-) {}
-// END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/dto/MarkNotificationReadRequest.java
 
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/dto/NewRoleRequest.java
 
@@ -22040,38 +21854,6 @@ public class OnboardingController {
 }
 // END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/OnboardingController.java
 
-//---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/PublicPlanningController.java
-
-package com.yowyob.template.infrastructure.adapters.inbound.rest;
-
-import com.yowyob.template.application.service.ProductService;
-import com.yowyob.template.domain.model.Planning;
-import com.yowyob.template.domain.model.Product;
-import com.yowyob.template.domain.model.ProductStatus;
-import io.swagger.v3.oas.annotations.tags.Tag;
-import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
-import reactor.core.publisher.Flux;
-
-@RestController
-@RequestMapping("/api/v1/public/plannings")
-@RequiredArgsConstructor
-@Tag(name = "Public Plannings", description = "Endpoints publics pour consulter les plannings publiés")
-public class PublicPlanningController {
-
-    private final ProductService productService;
-
-    @GetMapping("/published")
-    public Flux<Product> listPublishedPlannings() {
-        return productService.getAllProducts()
-                .filter(product -> product instanceof Planning)
-                .filter(product -> product.getStatus() == ProductStatus.Published);
-    }
-}
-// END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/PublicPlanningController.java
-
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/infrastructure/adapters/inbound/rest/SettingsController.java
 
 package com.yowyob.template.infrastructure.adapters.inbound.rest;
@@ -23064,7 +22846,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
-import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -23128,16 +22909,6 @@ public class BusinessActorExternalAdapter implements BusinessActorRepositoryPort
 
     @Override
     public Mono<BusinessActor> findById(UUID id, String jwtToken) {
-        return doFindByIdWithToken(id, jwtToken)
-                .onErrorResume(WebClientResponseException.class, ex -> {
-                    if (ex.getStatusCode().value() == 401 || ex.getStatusCode().value() == 403) {
-                        return doFindByIdWithToken(id, null);
-                    }
-                    return Mono.error(ex);
-                });
-    }
-
-    private Mono<BusinessActor> doFindByIdWithToken(UUID id, String jwtToken) {
         var requestSpec = getClient().get()
                 .uri("/api/v1/business-actors/{id}", id);
 
@@ -23159,16 +22930,6 @@ public class BusinessActorExternalAdapter implements BusinessActorRepositoryPort
 
     @Override
     public Mono<BusinessActor> findByUserId(UUID userId, String jwtToken) {
-        return doFindByUserIdWithToken(userId, jwtToken)
-                .onErrorResume(WebClientResponseException.class, ex -> {
-                    if (ex.getStatusCode().value() == 401 || ex.getStatusCode().value() == 403) {
-                        return doFindByUserIdWithToken(userId, null);
-                    }
-                    return Mono.error(ex);
-                });
-    }
-
-    private Mono<BusinessActor> doFindByUserIdWithToken(UUID userId, String jwtToken) {
         var requestSpec = getClient().get()
                 .uri("/api/v1/business-actors");
 
@@ -23975,19 +23736,17 @@ public record UpdateUserExternalRequest(String firstName, String lastName, Strin
 
 package com.yowyob.template.infrastructure.adapters.outbound.external;
 
-import com.yowyob.template.domain.model.AppNotification;
-import com.yowyob.template.domain.model.NotificationChannel;
 import com.yowyob.template.domain.ports.out.NotificationPort;
+import com.yowyob.template.infrastructure.adapters.outbound.external.dto.notification.NotificationCreatePullRequest;
+import com.yowyob.template.infrastructure.adapters.outbound.external.dto.notification.NotificationCreatePullResponse;
+import com.yowyob.template.infrastructure.adapters.outbound.external.dto.notification.NotificationSendRequest;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
-import java.util.Map;
-import java.util.UUID;
-
-@Slf4j
+@Component
 @RequiredArgsConstructor
 public class NotificationExternalAdapter implements NotificationPort {
 
@@ -24004,24 +23763,23 @@ public class NotificationExternalAdapter implements NotificationPort {
     }
 
     @Override
-    public Mono<AppNotification> notify(UUID userId,
-                                        NotificationChannel channel,
-                                        String type,
-                                        String title,
-                                        String body,
-                                        Map<String, Object> data) {
-        log.warn("External notification provider disabled/unavailable; skipping notify(type={})", type);
-        return Mono.empty();
+    public Mono<NotificationCreatePullResponse> createPull(NotificationCreatePullRequest request) {
+        return client().post()
+                .uri("/api/v1/notifications")
+                .header("X-Service-Token", serviceToken)
+                .bodyValue(request)
+                .retrieve()
+                .bodyToMono(NotificationCreatePullResponse.class);
     }
 
     @Override
-    public Mono<Void> push(UUID userId,
-                           String type,
-                           String title,
-                           String body,
-                           Map<String, Object> data) {
-        log.warn("External notification provider disabled/unavailable; skipping push(type={})", type);
-        return Mono.empty();
+    public Mono<Void> send(NotificationSendRequest request) {
+        return client().post()
+                .uri("/api/v1/notifications/send")
+                .header("X-Service-Token", serviceToken)
+                .bodyValue(request)
+                .retrieve()
+                .bodyToMono(Void.class);
     }
 }
 // END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/outbound/external/NotificationExternalAdapter.java
@@ -24037,7 +23795,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
-import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -24089,16 +23846,6 @@ public class OrganisationExternalAdapter implements OrganisationRepositoryPort {
 
     @Override
     public Mono<Organisation> findById(UUID id, String jwtToken) {
-        return doFindByIdWithToken(id, jwtToken)
-                .onErrorResume(WebClientResponseException.class, ex -> {
-                    if (ex.getStatusCode().value() == 401 || ex.getStatusCode().value() == 403) {
-                        return doFindByIdWithToken(id, null);
-                    }
-                    return Mono.error(ex);
-                });
-    }
-
-    private Mono<Organisation> doFindByIdWithToken(UUID id, String jwtToken) {
         var requestSpec = getClient().get()
                 .uri("/api/v1/organizations/{id}", id);
 
@@ -24120,21 +23867,11 @@ public class OrganisationExternalAdapter implements OrganisationRepositoryPort {
 
     @Override
     public Mono<Organisation> findByActorId(UUID actorId, String jwtToken) {
-        return doFindByActorIdWithToken(actorId, jwtToken)
-                .onErrorResume(WebClientResponseException.class, ex -> {
-                    if (ex.getStatusCode().value() == 401 || ex.getStatusCode().value() == 403) {
-                        return doFindByActorIdWithToken(actorId, null);
-                    }
-                    return Mono.error(ex);
-                });
-    }
-
-    private Mono<Organisation> doFindByActorIdWithToken(UUID actorId, String jwtToken) {
         var requestSpec = getClient().get()
                 .uri(uriBuilder -> uriBuilder.path("/api/v1/organizations")
                         .queryParam("actorId", actorId)
                         .build());
-
+                        
         if (jwtToken != null && !jwtToken.isEmpty()) {
             String headerValue = jwtToken.startsWith("Bearer ") ? jwtToken : "Bearer " + jwtToken;
             requestSpec.header("Authorization", headerValue);
@@ -24999,14 +24736,12 @@ import com.yowyob.template.domain.ports.out.ProductEventPublisherPort;
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.core.reactive.ReactiveKafkaProducerTemplate;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
 @Component
 @RequiredArgsConstructor
-@ConditionalOnProperty(prefix = "application.kafka", name = "enabled", havingValue = "true")
 public class KafkaAdapter implements ProductEventPublisherPort {
 
     private final ReactiveKafkaProducerTemplate<String, Object> kafkaTemplate;
@@ -25034,140 +24769,6 @@ public class KafkaAdapter implements ProductEventPublisherPort {
                 .then();
     }
 }// END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/outbound/messaging/KafkaAdapter.java
-
-//---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/infrastructure/adapters/outbound/notification/NotificationInternalAdapter.java
-
-package com.yowyob.template.infrastructure.adapters.outbound.notification;
-
-import com.yowyob.template.domain.model.AppNotification;
-import com.yowyob.template.domain.model.NotificationChannel;
-import com.yowyob.template.domain.ports.out.AppNotificationRepositoryPort;
-import com.yowyob.template.domain.ports.out.NotificationPort;
-import com.yowyob.template.domain.ports.out.NotificationPublisherPort;
-import lombok.RequiredArgsConstructor;
-import org.springframework.context.annotation.Primary;
-import org.springframework.stereotype.Component;
-import reactor.core.publisher.Mono;
-
-import java.time.OffsetDateTime;
-import java.util.Map;
-import java.util.UUID;
-
-@Component
-@Primary
-@RequiredArgsConstructor
-public class NotificationInternalAdapter implements NotificationPort {
-
-    private final AppNotificationRepositoryPort repository;
-    private final NotificationPublisherPort publisher;
-
-    @Override
-    public Mono<AppNotification> notify(UUID userId,
-                                        NotificationChannel channel,
-                                        String type,
-                                        String title,
-                                        String body,
-                                        Map<String, Object> data) {
-        if (userId == null) {
-            return Mono.error(new IllegalArgumentException("userId is required"));
-        }
-
-        var notif = AppNotification.builder()
-                .userId(userId)
-                .channel(channel)
-                .type(type)
-                .title(title)
-                .body(body)
-                .data(data)
-                .read(false)
-                .createdAt(OffsetDateTime.now())
-                .build();
-
-        return repository.save(notif)
-                .flatMap(saved -> publisher.publish(userId, saved).thenReturn(saved));
-    }
-
-    @Override
-    public Mono<Void> push(UUID userId,
-                           String type,
-                           String title,
-                           String body,
-                           Map<String, Object> data) {
-        if (userId == null) {
-            return Mono.error(new IllegalArgumentException("userId is required"));
-        }
-
-        var notif = AppNotification.builder()
-                .userId(userId)
-                .channel(NotificationChannel.PUSH)
-                .type(type)
-                .title(title)
-                .body(body)
-                .data(data)
-                .read(true)
-                .createdAt(OffsetDateTime.now())
-                .build();
-
-        return publisher.publish(userId, notif);
-    }
-}
-// END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/outbound/notification/NotificationInternalAdapter.java
-
-//---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/infrastructure/adapters/outbound/persistence/AppNotificationR2dbcAdapter.java
-
-package com.yowyob.template.infrastructure.adapters.outbound.persistence;
-
-import com.yowyob.template.domain.model.AppNotification;
-import com.yowyob.template.domain.ports.out.AppNotificationRepositoryPort;
-import com.yowyob.template.infrastructure.adapters.outbound.persistence.repository.AppNotificationR2dbcRepository;
-import com.yowyob.template.infrastructure.mappers.AppNotificationMapper;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Component;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
-
-import java.time.OffsetDateTime;
-import java.util.UUID;
-
-@Component
-@RequiredArgsConstructor
-public class AppNotificationR2dbcAdapter implements AppNotificationRepositoryPort {
-
-    private final AppNotificationR2dbcRepository repository;
-    private final AppNotificationMapper mapper;
-
-    @Override
-    public Mono<AppNotification> save(AppNotification notification) {
-        var entity = mapper.toEntity(notification);
-        if (entity.getCreatedAt() == null) {
-            entity.setCreatedAt(OffsetDateTime.now());
-        }
-        if (entity.getIsRead() == null) {
-            entity.setIsRead(false);
-        }
-        return repository.save(entity).map(mapper::toDomain);
-    }
-
-    @Override
-    public Flux<AppNotification> findByUserId(UUID userId) {
-        return repository.findByUserIdOrderByCreatedAtDesc(userId).map(mapper::toDomain);
-    }
-
-    @Override
-    public Mono<AppNotification> markRead(UUID userId, UUID notificationId, boolean read) {
-        return repository.findById(notificationId)
-                .switchIfEmpty(Mono.error(new IllegalArgumentException("notification not found")))
-                .flatMap(existing -> {
-                    if (!existing.getUserId().equals(userId)) {
-                        return Mono.error(new IllegalArgumentException("forbidden"));
-                    }
-                    existing.setIsRead(read);
-                    return repository.save(existing);
-                })
-                .map(mapper::toDomain);
-    }
-}
-// END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/outbound/persistence/AppNotificationR2dbcAdapter.java
 
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/infrastructure/adapters/outbound/persistence/entity/AddressEntity.java
 
@@ -25214,39 +24815,6 @@ public class AddressEntity {
     
 }
 // END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/outbound/persistence/entity/AddressEntity.java
-
-//---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/infrastructure/adapters/outbound/persistence/entity/AppNotificationEntity.java
-
-package com.yowyob.template.infrastructure.adapters.outbound.persistence.entity;
-
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-import org.springframework.data.annotation.Id;
-import org.springframework.data.relational.core.mapping.Table;
-
-import java.time.OffsetDateTime;
-import java.util.UUID;
-
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-@Table("app_notifications")
-public class AppNotificationEntity {
-    @Id
-    private UUID id;
-    private UUID userId;
-    private String channel;
-    private String type;
-    private String title;
-    private String body;
-    private String data;
-    private Boolean isRead;
-    private OffsetDateTime createdAt;
-}
-// END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/outbound/persistence/entity/AppNotificationEntity.java
 
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/infrastructure/adapters/outbound/persistence/entity/BusinessActorEntity.java
 
@@ -25771,23 +25339,6 @@ public class ReactionR2dbcAdapter implements ReactionRepositoryPort {
 }
 // END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/outbound/persistence/ReactionR2dbcAdapter.java
 
-//---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/infrastructure/adapters/outbound/persistence/repository/AppNotificationR2dbcRepository.java
-
-package com.yowyob.template.infrastructure.adapters.outbound.persistence.repository;
-
-import com.yowyob.template.infrastructure.adapters.outbound.persistence.entity.AppNotificationEntity;
-import org.springframework.data.repository.reactive.ReactiveCrudRepository;
-import org.springframework.stereotype.Repository;
-import reactor.core.publisher.Flux;
-
-import java.util.UUID;
-
-@Repository
-public interface AppNotificationR2dbcRepository extends ReactiveCrudRepository<AppNotificationEntity, UUID> {
-    Flux<AppNotificationEntity> findByUserIdOrderByCreatedAtDesc(UUID userId);
-}
-// END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/outbound/persistence/repository/AppNotificationR2dbcRepository.java
-
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/infrastructure/adapters/outbound/persistence/repository/OtpVerificationR2dbcRepository.java
 
 package com.yowyob.template.infrastructure.adapters.outbound.persistence.repository;
@@ -26062,43 +25613,6 @@ public class UserDeviceR2dbcAdapter implements UserDeviceRepositoryPort {
 }
 // END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/outbound/persistence/UserDeviceR2dbcAdapter.java
 
-//---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/infrastructure/adapters/outbound/realtime/InMemoryNotificationPublisherAdapter.java
-
-package com.yowyob.template.infrastructure.adapters.outbound.realtime;
-
-import com.yowyob.template.domain.model.AppNotification;
-import com.yowyob.template.domain.ports.out.NotificationPublisherPort;
-import org.springframework.stereotype.Component;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
-import reactor.core.publisher.Sinks;
-
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-
-@Component
-public class InMemoryNotificationPublisherAdapter implements NotificationPublisherPort {
-
-    private final Map<UUID, Sinks.Many<AppNotification>> sinks = new ConcurrentHashMap<>();
-
-    private Sinks.Many<AppNotification> sink(UUID userId) {
-        return sinks.computeIfAbsent(userId, id -> Sinks.many().multicast().onBackpressureBuffer());
-    }
-
-    @Override
-    public Mono<Void> publish(UUID userId, AppNotification notification) {
-        sink(userId).tryEmitNext(notification);
-        return Mono.empty();
-    }
-
-    @Override
-    public Flux<AppNotification> subscribe(UUID userId) {
-        return sink(userId).asFlux();
-    }
-}
-// END OF FILE: src/main/java/com/yowyob/template/infrastructure/adapters/outbound/realtime/InMemoryNotificationPublisherAdapter.java
-
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/infrastructure/config/KafkaConfig.java
 
 package com.yowyob.template.infrastructure.config;
@@ -26106,7 +25620,6 @@ package com.yowyob.template.infrastructure.config;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.core.reactive.ReactiveKafkaProducerTemplate;
@@ -26116,7 +25629,6 @@ import java.util.HashMap;
 import java.util.Map;
 
 @Configuration
-@ConditionalOnProperty(prefix = "application.kafka", name = "enabled", havingValue = "true")
 public class KafkaConfig {
 
     @Value("${spring.kafka.bootstrap-servers}")
@@ -26299,7 +25811,6 @@ public class SecurityConfig {
                                 "/api/v1/auth/register",
                                 "/api/v1/auth/register-init",
                                 "/api/v1/auth/verify-otp",
-                                "/api/v1/public/**",
                                 "/api-docs/**",
                                 "/swagger-ui.html",
                                 "/webjars/**",
@@ -26335,12 +25846,9 @@ public class SecurityConfig {
 
 package com.yowyob.template.infrastructure.config;
 
-import com.yowyob.template.domain.ports.out.ProductEventPublisherPort;
-import com.yowyob.template.domain.model.Product;
 import com.yowyob.template.infrastructure.adapters.outbound.external.client.StockApiClient;
 import io.netty.resolver.DefaultAddressResolverGroup;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
@@ -26348,7 +25856,6 @@ import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.support.WebClientAdapter;
 import org.springframework.web.service.invoker.HttpServiceProxyFactory;
-import reactor.core.publisher.Mono;
 import reactor.netty.http.client.HttpClient;
 
 @Configuration
@@ -26374,27 +25881,6 @@ public class WebClientConfig {
         
         return factory.createClient(StockApiClient.class);
     }
-
-    @Bean
-    @ConditionalOnMissingBean(ProductEventPublisherPort.class)
-    public ProductEventPublisherPort noopProductEventPublisherPort() {
-        return new ProductEventPublisherPort() {
-            @Override
-            public Mono<Void> publishProductCreated(Product product) {
-                return Mono.empty();
-            }
-
-            @Override
-            public Mono<Void> publishProductUpdated(Product product) {
-                return Mono.empty();
-            }
-
-            @Override
-            public Mono<Void> publishProductDeleted(Product product) {
-                return Mono.empty();
-            }
-        };
-    }
 }// END OF FILE: src/main/java/com/yowyob/template/infrastructure/config/WebClientConfig.java
 
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/infrastructure/mappers/AddressMapper.java
@@ -26416,82 +25902,6 @@ public interface AddressMapper {
 
     AddressResponse toResponse(Address domain);
 }// END OF FILE: src/main/java/com/yowyob/template/infrastructure/mappers/AddressMapper.java
-
-//---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/infrastructure/mappers/AppNotificationMapper.java
-
-package com.yowyob.template.infrastructure.mappers;
-
-import com.yowyob.template.domain.model.AppNotification;
-import com.yowyob.template.domain.model.NotificationChannel;
-import com.yowyob.template.infrastructure.adapters.outbound.persistence.entity.AppNotificationEntity;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Component;
-
-import java.time.OffsetDateTime;
-import java.util.Map;
-
-@Component
-@RequiredArgsConstructor
-public class AppNotificationMapper {
-    private final ObjectMapper objectMapper;
-
-    public AppNotificationEntity toEntity(AppNotification domain) {
-        if (domain == null) {
-            return null;
-        }
-
-        String dataJson = null;
-        try {
-            if (domain.getData() != null) {
-                dataJson = objectMapper.writeValueAsString(domain.getData());
-            }
-        } catch (Exception e) {
-            throw new IllegalArgumentException("invalid notification data", e);
-        }
-
-        return AppNotificationEntity.builder()
-                .id(domain.getId())
-                .userId(domain.getUserId())
-                .channel(domain.getChannel() != null ? domain.getChannel().name() : null)
-                .type(domain.getType())
-                .title(domain.getTitle())
-                .body(domain.getBody())
-                .data(dataJson)
-                .isRead(domain.isRead())
-                .createdAt(domain.getCreatedAt() != null ? domain.getCreatedAt() : OffsetDateTime.now())
-                .build();
-    }
-
-    public AppNotification toDomain(AppNotificationEntity entity) {
-        if (entity == null) {
-            return null;
-        }
-
-        Map<String, Object> data = null;
-        try {
-            if (entity.getData() != null && !entity.getData().isBlank()) {
-                data = objectMapper.readValue(entity.getData(), new TypeReference<>() {});
-            }
-        } catch (Exception e) {
-            throw new IllegalArgumentException("invalid notification data", e);
-        }
-
-        return AppNotification.builder()
-                .id(entity.getId())
-                .userId(entity.getUserId())
-                .channel(entity.getChannel() != null ? NotificationChannel.valueOf(entity.getChannel()) : null)
-                .type(entity.getType())
-                .title(entity.getTitle())
-                .body(entity.getBody())
-                .data(data)
-                .read(Boolean.TRUE.equals(entity.getIsRead()))
-                .createdAt(entity.getCreatedAt())
-                .build();
-    }
-}
-// END OF FILE: src/main/java/com/yowyob/template/infrastructure/mappers/AppNotificationMapper.java
 
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/main/java/com/yowyob/template/infrastructure/mappers/BusinessActorMapper.java
 
@@ -26943,7 +26353,7 @@ spring:
       validation-query: SELECT 1
   sql:
     init:
-      mode: never
+      mode: always
 
   mail:
     host: ${SPRING_MAIL_HOST:smtp.gmail.com}
@@ -26999,10 +26409,6 @@ application:
     stock-service-url: http://${EXTERNAL_HOST:localhost}:8081
     notification-service-url: ${NOTIFICATION_SERVICE_URL:https://notification-service.pynfi.com}
     notification-service-token: ${NOTIFICATION_SERVICE_TOKEN:}
-  kafka:
-    enabled: false
-    topics:
-      product-events: product-events-topic
   notification:
     templates:
       pull:
@@ -27019,6 +26425,9 @@ application:
         annonce-accepted: ${NOTIF_TPL_PUSH_ANNONCE_ACCEPTED:}
         annonce-confirmed: ${NOTIF_TPL_PUSH_ANNONCE_CONFIRMED:}
         review-received: ${NOTIF_TPL_PUSH_REVIEW_RECEIVED:}
+  kafka:
+    topics:
+      product-events: product-events-topic
 
 management:
   endpoints:
@@ -27034,11 +26443,6 @@ management:
     export:
       prometheus:
         enabled: true
-
-logging:
-  level:
-    org.apache.kafka: WARN
-    org.springframework.kafka: WARN
 
 # RESILIENCE4J 
 resilience4j:
@@ -27131,7 +26535,6 @@ application:
     auth-service-url: ${AUTH_SERVICE_URL:https://auth-service.pynfi.com}  # URL du service d'authentification (variable d'environnement)
     organization-service-url: ${ORGANIZATION_SERVICE_URL:https://organization-service.pynfi.com}  # URL du service Organisation
     stock-service-url: http://${EXTERNAL_HOST:localhost}:8081  # URL du service Stock
-    vehicle-service-url: ${VEHICLE_SERVICE_URL:https://vehicule.mbognengjunior.me/}
 
   kafka:
     topics:
@@ -27167,7 +26570,6 @@ resilience4j:
 -- Nettoyage des anciennes tables si elles existent
 DROP TABLE IF EXISTS products CASCADE;
 DROP TABLE IF EXISTS user_devices CASCADE;
-DROP TABLE IF EXISTS app_notifications CASCADE;
 DROP TABLE IF EXISTS Review CASCADE;
 DROP TABLE IF EXISTS reactions CASCADE;
 DROP TABLE IF EXISTS Settings CASCADE;
@@ -27177,9 +26579,6 @@ DROP TYPE IF EXISTS trip_type CASCADE;
 
 -- Ajout de l'extension pour les UUIDs si elle n'existe pas
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
--- gen_random_uuid() dépend de pgcrypto
-CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- 1. ENUMERATIONS (Types de données contrôlés)
 
@@ -27305,23 +26704,7 @@ CREATE TABLE IF NOT EXISTS user_devices (
     platform TEXT NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     UNIQUE (fcm_token)
-);
-
--- 7. TABLE APP_NOTIFICATIONS (PULL interne)
-
-CREATE TABLE IF NOT EXISTS app_notifications (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL,
-    channel TEXT NOT NULL,
-    type TEXT NOT NULL,
-    title TEXT,
-    body TEXT,
-    data TEXT,
-    is_read BOOLEAN DEFAULT false,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_app_notifications_user_created ON app_notifications(user_id, created_at DESC);// END OF FILE: src/main/resources/schema.sql
+);// END OF FILE: src/main/resources/schema.sql
 
 //---> PATH: /home/mbogneng-junior/Documents/5GI/Projets/synthese/FreelanceDriver_new/BackendPostgre/src/test/java/com/yowyob/reactive_hexagonal/ReactiveHexagonalApplicationTests.java
 

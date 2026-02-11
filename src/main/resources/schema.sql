@@ -12,9 +12,6 @@ DROP TYPE IF EXISTS trip_type CASCADE;
 -- Ajout de l'extension pour les UUIDs si elle n'existe pas
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- gen_random_uuid() dépend de pgcrypto
-CREATE EXTENSION IF NOT EXISTS "pgcrypto";
-
 -- 1. ENUMERATIONS (Types de données contrôlés)
 
 CREATE TYPE product_status AS ENUM (
