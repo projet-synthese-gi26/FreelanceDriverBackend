@@ -219,20 +219,23 @@ public class ClientAnnonceService {
                     // qui rendait les variables non effectively final et empêchait leur capture
                     // dans les lambdas imbriquées (erreur Java 536871575).
 
-                    final Mono<Void> terminatedAction = driverResolver
-                    .switchIfEmpty(Mono.error(new IllegalStateException("Cannot terminate: No driver linked.")))
-                    .flatMap(driver -> {
-                        BigDecimal amount = safeParseAmount(annonce.getCost(), fid);
-                        return paymentUseCase.processRidePayment(driver.getId(), amount)
-                            .then(notificationService.sendCommissionDeductedAlert(
-                                    driver.getId(), 
-                                    driver.getFirstName(), 
-                                    driver.getPhone(), 
-                                    amount.multiply(new BigDecimal("0.1")).toString(),
-                                    annonce.getTitle(),           // <--- PASSAGE DU VRAI TITRE
-                                    annonce.getDropoffLocation()  // <--- PASSAGE DE LA VRAIE DESTINATION
-                            ));
-                    });
+                    final Mono<Void> terminatedAction =
+                            (newStatus == ProductStatus.Terminated && oldStatus != ProductStatus.Terminated)
+                                    ? driverResolver
+                                    .switchIfEmpty(Mono.error(new IllegalStateException("Cannot terminate: No driver linked.")))
+                                    .flatMap(driver -> {
+                                        BigDecimal amount = safeParseAmount(annonce.getCost(), fid);
+                                        return paymentUseCase.processRidePayment(driver.getId(), amount)
+                                                .then(notificationService.sendCommissionDeductedAlert(
+                                                        driver.getId(),
+                                                        driver.getFirstName(),
+                                                        driver.getPhone(),
+                                                        amount.multiply(new BigDecimal("0.1")).toString(),
+                                                        annonce.getTitle(),           // <--- PASSAGE DU VRAI TITRE
+                                                        annonce.getDropoffLocation()  // <--- PASSAGE DE LA VRAIE DESTINATION
+                                                ));
+                                    })
+                                    : Mono.empty();
 
                     final Mono<Void> confirmedAction =
                             (newStatus == ProductStatus.Confirmed && oldStatus != ProductStatus.Confirmed)
