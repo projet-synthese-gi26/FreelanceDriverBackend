@@ -1,12 +1,17 @@
 package com.yowyob.template.application.service;
 
+import com.yowyob.template.application.service.NotificationService;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yowyob.template.domain.model.DriverRole;
 import com.yowyob.template.domain.model.Planning;
 import com.yowyob.template.domain.model.Product;
 import com.yowyob.template.domain.model.ProductStatus;
+import com.yowyob.template.domain.ports.in.PaymentUseCase;
 import com.yowyob.template.domain.ports.out.BusinessActorRepositoryPort;
 import com.yowyob.template.domain.ports.out.OrganisationRepositoryPort;
 import com.yowyob.template.domain.ports.out.ProductRepositoryPort;
+import com.yowyob.template.domain.ports.out.UserRepositoryPort;
 import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.request.CreatePlanningRequest;
 import com.yowyob.template.infrastructure.adapters.inbound.rest.dto.request.UpdatePlanningRequest;
 import lombok.RequiredArgsConstructor;
@@ -16,6 +21,7 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.UUID;
@@ -29,6 +35,14 @@ public class DriverPlanningService {
     private final OrganisationRepositoryPort organisationRepository;
     private final ProductRepositoryPort productRepository;
     private final NotificationTriggerService notificationTriggerService;
+    
+    // ========== AJOUT: Dépendances de votre code original ==========
+    private final PaymentUseCase paymentUseCase;
+    private final ObjectMapper objectMapper;
+    private final UserRepositoryPort userRepository;
+    private final NotificationService notificationService;
+    private static final String LOG_PREFIX = "[SERV-PLANNING]";
+    // ================================================================
 
     private static final String PLANNING_TYPE = "PLANNING";
 
@@ -105,6 +119,12 @@ public class DriverPlanningService {
     }
 
     public Mono<Product> updateDriverPlanning(UUID authUserId, UUID planningId, UpdatePlanningRequest request, String token) {
+        // ========== AJOUT: Logging de votre code original ==========
+        String fid = "UPDT-PLAN-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        log.info("{} ╔══════════════════════════════════════════════════════════════════════════", LOG_PREFIX);
+        log.info("{} ║ [{}] START UPDATE PROCESS (PLANNING)", LOG_PREFIX, fid);
+        // ============================================================
+        
         return productRepository.findByIdAndProductType(planningId, PLANNING_TYPE)
                 .switchIfEmpty(Mono.error(new AccessDeniedException("Planning not found")))
                 .flatMap(existing -> {
@@ -216,13 +236,77 @@ public class DriverPlanningService {
                         if (request.discountedAmount() != null) planning.setDiscountedAmount(request.discountedAmount());
                         planning.setUpdatedAt(Timestamp.from(Instant.now()));
 
-                        return productRepository.save(planning)
-                                .flatMap(saved -> notificationTriggerService
-                                        .onProductUpdated(PLANNING_TYPE, existing.getClientId(), previousReservedById, previousStatus, saved, token)
-                                        .thenReturn(saved));
+                        // ========== AJOUT: Calcul du nouveau statut et actions (de votre code original) ==========
+                        ProductStatus oldStatus = previousStatus;
+                        ProductStatus newStatus = planning.getStatus();
+                        
+                        // --- RÉSOLUTION DU CHAUFFEUR (Pour avoir son téléphone réel) ---
+                        Mono<com.yowyob.template.domain.model.User> driverResolver = userRepository.findById(authUserId, token).cache();
+                        
+                        // --- 1. ACTION SI TERMINATED (Paiement + Notif Chauffeur) ---
+                        Mono<Void> terminatedAction = Mono.empty();
+                        if (newStatus == ProductStatus.Terminated && oldStatus != ProductStatus.Terminated) {
+                            BigDecimal amount = safeParseBigDecimal(planning.getRegularAmount(), fid);
+                            
+                            terminatedAction = driverResolver.flatMap(driver -> 
+                            paymentUseCase.processRidePayment(authUserId, amount)
+                                .then(notificationService.sendCommissionDeductedAlert(
+                                        authUserId, 
+                                        driver.getFirstName(), 
+                                        driver.getPhone(),
+                                        amount.multiply(new BigDecimal("0.1")).toString(),
+                                        planning.getTitle(),           // <--- PASSAGE DU VRAI TITRE
+                                        planning.getDropoffLocation()  // <--- PASSAGE DE LA VRAIE DESTINATION
+                                ))
+                        ).onErrorResume(e -> Mono.error(e));
+                        }
+                        
+                        // --- 2. ACTION SI CONFIRMED (Notif au Client) ---
+                        Mono<Void> confirmedAction = Mono.empty();
+                        if (newStatus == ProductStatus.Confirmed && oldStatus != ProductStatus.Confirmed) {
+                            // Dans cette version, reservedById est directement le UserId du Client
+                            UUID clientId = planning.getReservedById();
+                            
+                            if (clientId != null) {
+                                log.info("{} [{}] 🔔 Confirmation. Notifying Client User {} directly...", LOG_PREFIX, fid, clientId);
+                                
+                                // On appelle directement le dépôt des utilisateurs
+                                confirmedAction = userRepository.findById(clientId, token)
+                                    .flatMap(clientUser -> notificationService.sendRideConfirmedAlert(
+                                            clientUser.getId(), 
+                                            clientUser.getFirstName(), 
+                                            clientUser.getEmail(), 
+                                            clientUser.getPhone(), 
+                                            planning.getTitle(), 
+                                            planning.getDropoffLocation()
+                                    ))
+                                    .doOnSuccess(v -> log.info("{} [{}] ✅ Notification flow triggered for client.", LOG_PREFIX, fid))
+                                    .onErrorResume(e -> {
+                                        log.warn("{} [{}] ⚠️ Failed to notify client {}: {}", LOG_PREFIX, fid, clientId, e.getMessage());
+                                        return Mono.empty(); // On ne bloque pas la transaction si la notification échoue
+                                    });
+                            } else {
+                                log.warn("{} [{}] ⚠️ Cannot notify: reservedById is null on Confirmed status.", LOG_PREFIX, fid);
+                            }
+                        }
+
+                        // =========================================================================================
+
+                        // ========== AJOUT: EXÉCUTION DES ACTIONS (Paiement & Notif) + Sauvegarde ==========
+                        return Mono.when(terminatedAction, confirmedAction)
+                                .then(Mono.defer(() -> {
+                                    return productRepository.save(planning)
+                                            .flatMap(saved -> notificationTriggerService
+                                                    .onProductUpdated(PLANNING_TYPE, existing.getClientId(), previousReservedById, previousStatus, saved, token)
+                                                    .thenReturn(saved));
+                                }));
+                        // ===================================================================================
                     });
                     }));
-                });
+                })
+                // ========== AJOUT: Logging final de votre code original ==========
+                .doFinally(s -> log.info("{} ╚══════════════════════════════════════════════════════════════════════════", LOG_PREFIX));
+                // ==================================================================
     }
 
     public Mono<Void> deleteDriverPlanning(UUID authUserId, UUID planningId, String token) {
@@ -247,4 +331,25 @@ public class DriverPlanningService {
                     return Mono.empty();
                 });
     }
+
+    // ========== AJOUT: Méthodes helpers de votre code original ==========
+    private BigDecimal safeParseBigDecimal(String val, String flowId) {
+        if (val == null || val.isBlank()) return BigDecimal.ZERO;
+        try {
+            return new BigDecimal(val.replaceAll("[^\\d.]", ""));
+        } catch (Exception e) {
+            log.error("{} [{}] Could not parse amount '{}'. Defaulting to 0.", LOG_PREFIX, flowId, val);
+            return BigDecimal.ZERO;
+        }
+    }
+
+    private void logJson(String flowId, String label, Object obj) {
+        try {
+            String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(obj);
+            log.info("{} [{}] {}:\n{}", LOG_PREFIX, flowId, label, json);
+        } catch (JsonProcessingException e) {
+            log.error("{} [{}] Failed to log JSON for {}: {}", LOG_PREFIX, flowId, label, e.getMessage());
+        }
+    }
+    // ====================================================================
 }
