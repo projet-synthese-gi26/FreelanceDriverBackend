@@ -8,9 +8,21 @@ spring:
     compose:
       enabled: false  # Désactiver Docker Compose
 
+  # ------------------------------------------------------------------
+  # DATABASE — Liquibase
+  # ------------------------------------------------------------------
+  liquibase:
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT:5432}/${DB_NAME:yowyob}
+    user: ${DB_LIQUIBASE_USERNAME}
+    password: ${DB_LIQUIBASE_PASSWORD}
+    enabled: true
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+    default-schema: ${DB_SCHEMA:freelance_driver}
+    liquibase-schema: ${DB_SCHEMA:freelance_driver}
+
   # Configuration de la base de données PostgreSQL (R2DBC)
   r2dbc:
-    url: r2dbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:freelance_db}  # Utilisation des variables d'environnement pour l'URL
+    url: r2dbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:yowyob}?schema=${DB_SCHEMA:freelance_driver}  # Utilisation des variables d'environnement pour l'URL
     username: ${DB_USERNAME:postgres}  # Nom d'utilisateur de la base de données
     password: ${DB_PASSWORD:password}  # Mot de passe de la base de données
     pool:
@@ -25,7 +37,7 @@ spring:
 
   sql:
     init:
-      mode: always
+      mode: never
 
   mail:
     host: ${SPRING_MAIL_HOST:smtp.gmail.com}
@@ -38,22 +50,47 @@ spring:
       mail.smtp.starttls.required: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_REQUIRED:true}
       mail.debug: ${SPRING_MAIL_PROPERTIES_MAIL_DEBUG:true}
 
-  # Configuration du cluster Redis
+  # ------------------------------------------------------------------
+  # REDIS CLUSTER
+  # ------------------------------------------------------------------
   data:
     redis:
-      password: ${REDIS_PASSWORD:password}  # Mot de passe Redis (si applicable)
+      username: ${REDIS_USERNAME}
+      password: ${REDIS_PASSWORD}
       cluster:
         nodes:
-          - ${REDIS_HOST:localhost}:7001  # Nœuds du cluster Redis
-          - ${REDIS_HOST:localhost}:7002
-          - ${REDIS_HOST:localhost}:7003
-          - ${REDIS_HOST:localhost}:7004
-          - ${REDIS_HOST:localhost}:7005
-          - ${REDIS_HOST:localhost}:7006
+          - ${REDIS_HOST}:7001
+          - ${REDIS_HOST}:7002
+          - ${REDIS_HOST}:7003
+          - ${REDIS_HOST}:7004
+          - ${REDIS_HOST}:7005
+          - ${REDIS_HOST}:7006
+        max-redirects: 3
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+          min-idle: 2
+        cluster:
+          refresh:
+            adaptive: true
+            period: 30s
+            dynamic-refresh-sources: false
 
-  # Configuration Kafka
+  # ------------------------------------------------------------------
+  # KAFKA — Connexion sécurisée SASL/SCRAM-SHA-256
+  # ------------------------------------------------------------------
   kafka:
-    bootstrap-servers: ${KAFKA_HOST:localhost}:${KAFKA_PORT:9092}  # Serveurs Kafka (utilise localhost par défaut)
+    bootstrap-servers: ${KAFKA_HOST}:${KAFKA_PORT:29092}
+
+    # ── Authentification SASL/SCRAM-SHA-256 ────────────────────────
+    properties:
+      security.protocol: SASL_PLAINTEXT
+      sasl.mechanism: SCRAM-SHA-256
+      sasl.jaas.config: >
+        org.apache.kafka.common.security.scram.ScramLoginModule required
+        username="${KAFKA_BACKEND_USER}"
+        password="${KAFKA_BACKEND_PASSWORD}";
     consumer:
       auto-offset-reset: earliest  # Réinitialiser l'offset au début en cas d'absence
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer  # Désérialiseur de clé (String)
