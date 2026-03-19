@@ -2,9 +2,9 @@ databaseChangeLog:
   - changeSet:
       id: 001-enable-uuid-extension
       author: jonathan
-      changes:
-        - sql:
-            sql: CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+      #changes:
+      #  - sql:
+      #      sql: CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
   - changeSet:
       id: 002-create-enums
