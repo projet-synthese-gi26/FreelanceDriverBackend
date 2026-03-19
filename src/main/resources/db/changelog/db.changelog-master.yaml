@@ -1,0 +1,179 @@
+databaseChangeLog:
+  - changeSet:
+      id: 001-enable-uuid-extension
+      author: jonathan
+      changes:
+        - sql:
+            sql: CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+  - changeSet:
+      id: 002-create-enums
+      author: jonathan
+      changes:
+        - sql:
+            sql: |
+              CREATE TYPE product_status AS ENUM (
+                  'Draft',
+                  'Published',
+                  'PendingConfirmation',
+                  'PendingDriverConfirmation',
+                  'Confirmed',
+                  'Ongoing',
+                  'Terminated',
+                  'Expired',
+                  'Cancelled'
+              );
+
+              CREATE TYPE trip_type AS ENUM (
+                  'ONE_WAY',
+                  'ROUND_TRIP'
+              );
+
+  - changeSet:
+      id: 003-create-products
+      author: jonathan
+      changes:
+        - createTable:
+            tableName: products
+            columns:
+              - column: { name: id, type: UUID, defaultValueComputed: "gen_random_uuid()", constraints: { primaryKey: true } }
+              - column: { name: organization_id, type: UUID, constraints: { nullable: false } }
+
+              - column: { name: client_id, type: UUID, constraints: { nullable: false } }
+              - column: { name: client_name, type: VARCHAR(255) }
+              - column: { name: client_phone_number, type: VARCHAR(50) }
+              - column: { name: profile_image_url, type: TEXT }
+
+              - column: { name: title, type: VARCHAR(100), constraints: { nullable: false } }
+              - column: { name: status, type: product_status, defaultValue: "Draft" }
+              - column: { name: trip_type, type: trip_type }
+              - column: { name: is_negotiable, type: BOOLEAN, defaultValueBoolean: false }
+              - column: { name: payment_method, type: VARCHAR(100) }
+              - column: { name: departure_location, type: TEXT }
+              - column: { name: dropoff_location, type: TEXT }
+              - column: { name: meetup_point, type: TEXT }
+              - column: { name: trip_intention, type: VARCHAR(100) }
+              - column: { name: pricing_method, type: VARCHAR(100) }
+              - column: { name: start_date, type: TIMESTAMPTZ }
+              - column: { name: start_time, type: TIME }
+              - column: { name: end_date, type: TIMESTAMPTZ }
+              - column: { name: end_time, type: TIME }
+              - column: { name: reserved_by_id, type: UUID }
+              - column: { name: created_at, type: TIMESTAMPTZ, defaultValueComputed: "NOW()" }
+              - column: { name: updated_at, type: TIMESTAMPTZ }
+
+              - column: { name: cost, type: VARCHAR(255) }
+              - column: { name: baggage_info, type: VARCHAR(255) }
+
+              - column: { name: payment_option, type: VARCHAR(100) }
+              - column: { name: regular_amount, type: VARCHAR(200) }
+              - column: { name: discount_percentage, type: DECIMAL }
+              - column: { name: discounted_amount, type: DECIMAL }
+
+              - column: { name: product_type, type: VARCHAR(50), constraints: { nullable: false } }
+
+  - changeSet:
+      id: 004-create-review
+      author: jonathan
+      changes:
+        - createTable:
+            tableName: review
+            columns:
+              - column: { name: id, type: UUID, defaultValueComputed: "gen_random_uuid()", constraints: { primaryKey: true } }
+              - column: { name: author_id, type: UUID, constraints: { nullable: false } }
+              - column: { name: subject_id, type: UUID, constraints: { nullable: false } }
+              - column: { name: subject_type, type: TEXT, constraints: { nullable: false } }
+              - column: { name: review_type, type: TEXT }
+              - column: { name: rating, type: INT }
+              - column: { name: comment, type: TEXT }
+              - column: { name: report_reason, type: TEXT }
+              - column: { name: created_at, type: TIMESTAMPTZ, defaultValueComputed: "NOW()" }
+
+  - changeSet:
+      id: 005-create-reactions
+      author: jonathan
+      changes:
+        - createTable:
+            tableName: reactions
+            columns:
+              - column: { name: id, type: UUID, defaultValueComputed: "gen_random_uuid()", constraints: { primaryKey: true } }
+              - column: { name: actor_id, type: UUID, constraints: { nullable: false } }
+              - column: { name: target_id, type: UUID, constraints: { nullable: false } }
+              - column: { name: target_type, type: TEXT, constraints: { nullable: false } }
+              - column: { name: type, type: TEXT, constraints: { nullable: false } }
+              - column: { name: created_at, type: TIMESTAMPTZ, defaultValueComputed: "NOW()" }
+
+        - addUniqueConstraint:
+            tableName: reactions
+            columnNames: actor_id, target_id, target_type
+            constraintName: uq_reactions_unique
+
+  - changeSet:
+      id: 006-create-settings
+      author: jonathan
+      changes:
+        - createTable:
+            tableName: settings
+            columns:
+              - column: { name: id, type: UUID, defaultValueComputed: "gen_random_uuid()", constraints: { primaryKey: true } }
+              - column: { name: user_id, type: TEXT, constraints: { nullable: false, unique: true } }
+              - column: { name: theme, type: TEXT }
+              - column: { name: language, type: TEXT }
+              - column: { name: created_at, type: TIMESTAMPTZ, defaultValueComputed: "NOW()" }
+              - column: { name: updated_at, type: TIMESTAMPTZ }
+
+  - changeSet:
+      id: 007-create-otp
+      author: jonathan
+      changes:
+        - createTable:
+            tableName: otp_verifications
+            columns:
+              - column: { name: id, type: UUID, defaultValueComputed: "gen_random_uuid()", constraints: { primaryKey: true } }
+              - column: { name: email, type: TEXT, constraints: { nullable: false } }
+              - column: { name: otp, type: TEXT, constraints: { nullable: false } }
+              - column: { name: expires_at, type: TIMESTAMPTZ }
+              - column: { name: verified, type: BOOLEAN, defaultValueBoolean: false }
+              - column: { name: created_at, type: TIMESTAMPTZ, defaultValueComputed: "NOW()" }
+
+  - changeSet:
+      id: 008-create-user-devices
+      author: jonathan
+      changes:
+        - createTable:
+            tableName: user_devices
+            columns:
+              - column: { name: id, type: UUID, defaultValueComputed: "gen_random_uuid()", constraints: { primaryKey: true } }
+              - column: { name: user_id, type: UUID, constraints: { nullable: false } }
+              - column: { name: fcm_token, type: TEXT, constraints: { nullable: false } }
+              - column: { name: platform, type: TEXT, constraints: { nullable: false } }
+              - column: { name: updated_at, type: TIMESTAMPTZ, defaultValueComputed: "NOW()" }
+
+        - addUniqueConstraint:
+            tableName: user_devices
+            columnNames: fcm_token
+            constraintName: uq_user_devices_token
+
+  - changeSet:
+      id: 009-create-app-notifications
+      author: jonathan
+      changes:
+        - createTable:
+            tableName: app_notifications
+            columns:
+              - column: { name: id, type: UUID, defaultValueComputed: "gen_random_uuid()", constraints: { primaryKey: true } }
+              - column: { name: user_id, type: UUID, constraints: { nullable: false } }
+              - column: { name: channel, type: TEXT, constraints: { nullable: false } }
+              - column: { name: type, type: TEXT, constraints: { nullable: false } }
+              - column: { name: title, type: TEXT }
+              - column: { name: body, type: TEXT }
+              - column: { name: data, type: TEXT }
+              - column: { name: is_read, type: BOOLEAN, defaultValueBoolean: false }
+              - column: { name: created_at, type: TIMESTAMPTZ, defaultValueComputed: "NOW()" }
+
+        - createIndex:
+            tableName: app_notifications
+            indexName: idx_app_notifications_user_created
+            columns:
+              - column: { name: user_id }
+              - column: { name: created_at }
