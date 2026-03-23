@@ -115,6 +115,8 @@ application:
     organization-service-url: ${ORGANIZATION_SERVICE_URL:https://traefikdev.yowyob.com/organization}  # URL du service Organisation
     stock-service-url: http://${EXTERNAL_HOST:localhost}:8081  # URL du service Stock
     vehicle-service-url: ${VEHICLE_SERVICE_URL:https://traefikdev.yowyob.com/vehicule}
+    notification-service-url: ${NOTIFICATION_SERVICE_URL:https://traefikdev.yowyob.com/notification}
+    notification-service-token: ${NOTIFICATION_SERVICE_TOKEN}
 
   kafka:
     topics:
