@@ -23,15 +23,6 @@ spring:
       acquire-retry: 3
       max-acquire-time: 30s
       validation-query: SELECT 1
-  
-  # LIQUIBASE
-  liquibase:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:reactivedb}
-    user: ${DB_USERNAME:user}
-    password: ${DB_PASSWORD:password}
-    change-log: classpath:db/changelog/db.changelog-master.yaml
-    enabled: true
-
   sql:
     init:
       mode: never
@@ -40,7 +31,7 @@ spring:
     host: ${SPRING_MAIL_HOST:smtp.gmail.com}
     port: ${SPRING_MAIL_PORT:587}
     username: ${SPRING_MAIL_USERNAME:mbognengj@gmail.com}
-    password: ${SPRING_MAIL_PASSWORD:msyyjlvcufflpqel}
+    password: ${SPRING_MAIL_PASSWORD:fmpjyadvpepfvcws}
     properties:
       mail.smtp.auth: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH:true}
       mail.smtp.starttls.enable: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE:true}
@@ -77,19 +68,18 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          jwk-set-uri: ${JWK_SET_URI:https://traefikdev.yowyob.com/auth/.well-known/jwks.json}
+          jwk-set-uri: ${JWK_SET_URI:https://auth-service.pynfi.com/.well-known/jwks.json}
           jws-algorithms: RS256
 
 # CUSTOM CONFIG 
 application:
   external:
-    auth-service-url: ${AUTH_SERVICE_URL:https://traefikdev.yowyob.com/auth}
+    auth-service-url: ${AUTH_SERVICE_URL:https://auth-service.pynfi.com}
     payment-service-url: ${PAYMENT_SERVICE_URL:https://payment-service.pynfi.com}
-    organization-service-url: ${ORGANIZATION_SERVICE_URL:https://traefikdev.yowyob.com/organization}
-    vehicle-service-url: ${VEHICLE_SERVICE_URL:https://traefikdev.yowyob.com/vehicule}
-    #vehicle-service-url: ${VEHICLE_SERVICE_URL:http://localhost:8080}
+    organization-service-url: ${ORGANIZATION_SERVICE_URL:https://organization-service.pynfi.com}
+    vehicle-service-url: ${VEHICLE_SERVICE_URL:https://vehicule.mbognengjunior.me}
     stock-service-url: http://${EXTERNAL_HOST:localhost}:8081
-    notification-service-url: ${NOTIFICATION_SERVICE_URL:https://traefikdev.yowyob.com/notification}
+    notification-service-url: ${NOTIFICATION_SERVICE_URL:https://notification-service.pynfi.com}
     notification-service-token: ${NOTIFICATION_SERVICE_TOKEN:}
   kafka:
     enabled: false
@@ -131,7 +121,6 @@ logging:
   level:
     org.apache.kafka: WARN
     org.springframework.kafka: WARN
-    org.springframework.web.reactive.function.client.WebClient: DEBUG
 
 # RESILIENCE4J 
 resilience4j:

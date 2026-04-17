@@ -18,4 +18,5 @@ public class UserProfileResponse {
     private User user;
     private BusinessActor actor;
     private Organisation organisation;
+    private String message;
 }

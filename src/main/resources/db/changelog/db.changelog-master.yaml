@@ -30,6 +30,17 @@ databaseChangeLog:
               );
 
   - changeSet:
+      id: 010-create-implicit-casts
+      author: antigravity
+      changes:
+        - sql:
+            sql: |
+              CREATE CAST (varchar AS product_status) WITH INOUT AS IMPLICIT;
+              CREATE CAST (text AS product_status) WITH INOUT AS IMPLICIT;
+              CREATE CAST (varchar AS trip_type) WITH INOUT AS IMPLICIT;
+              CREATE CAST (text AS trip_type) WITH INOUT AS IMPLICIT;
+
+  - changeSet:
       id: 003-create-products
       author: jonathan
       changes:

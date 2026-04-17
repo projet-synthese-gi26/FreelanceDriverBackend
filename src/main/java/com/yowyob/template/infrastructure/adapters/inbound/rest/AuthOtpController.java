@@ -24,33 +24,52 @@ import reactor.core.publisher.Mono;
 @RequiredArgsConstructor
 @Tag(name = "OTP Verification", description = "Vérification OTP pour l'inscription")
 public class AuthOtpController {
-    private final AuthRegistrationService registrationService;
+        private final AuthRegistrationService registrationService;
 
-    @PostMapping("/register-init")
-    @Operation(summary = "Initialiser l'inscription", description = "Envoie un OTP par email pour démarrer l'inscription.")
-    public Mono<ResponseEntity<RegisterInitResponse>> registerInit(@Valid @RequestBody RegisterInitRequest request) {
-        log.info("Register init requested for email={}", request.email());
-        return registrationService.registerInit(request)
-                .thenReturn(ResponseEntity.ok(RegisterInitResponse.builder()
-                        .success(true)
-                        .message("OTP sent to email")
-                        .build()))
-                .onErrorResume(IllegalArgumentException.class, ex -> Mono.just(ResponseEntity
-                        .status(HttpStatus.BAD_REQUEST)
-                        .body(RegisterInitResponse.builder()
-                                .success(false)
-                                .message(ex.getMessage())
-                                .build())));
-    }
+        @PostMapping("/register-init")
+        @Operation(summary = "Initialiser l'inscription", description = "Envoie un OTP par email pour démarrer l'inscription.")
+        public Mono<ResponseEntity<RegisterInitResponse>> registerInit(
+                        @Valid @RequestBody RegisterInitRequest request) {
+                log.info("Register init requested for email={}", request.email());
+                return registrationService.registerInit(request)
+                                .thenReturn(ResponseEntity.ok(RegisterInitResponse.builder()
+                                                .success(true)
+                                                .message("OTP sent to email")
+                                                .build()))
+                                .onErrorResume(IllegalArgumentException.class, ex -> Mono.just(ResponseEntity
+                                                .status(HttpStatus.BAD_REQUEST)
+                                                .body(RegisterInitResponse.builder()
+                                                                .success(false)
+                                                                .message(ex.getMessage())
+                                                                .build())));
+        }
 
-    @PostMapping("/verify-otp")
-    @Operation(summary = "Vérifier OTP", description = "Vérifie un code OTP et finalise l'inscription.")
-    public Mono<ResponseEntity<UserProfileResponse>> verifyOtp(@Valid @RequestBody OtpRegisterVerifyRequest request) {
-        log.info("OTP verification requested for email={}", request.email());
-        return registrationService.verifyOtpAndRegister(request)
-                .map(ResponseEntity::ok)
-                .onErrorResume(IllegalArgumentException.class, ex -> Mono.just(ResponseEntity
-                        .status(HttpStatus.BAD_REQUEST)
-                        .build()));
-    }
+        @PostMapping("/verify-otp")
+        @Operation(summary = "Vérifier OTP", description = "Vérifie un code OTP et finalise l'inscription.")
+        public Mono<ResponseEntity<UserProfileResponse>> verifyOtp(
+                        @Valid @RequestBody OtpRegisterVerifyRequest request) {
+                log.info("OTP verification requested for email={}", request.email());
+                return registrationService.verifyOtpAndRegister(request)
+                                .map(ResponseEntity::ok)
+                                .onErrorResume(IllegalArgumentException.class, ex -> Mono.just(ResponseEntity
+                                                .status(HttpStatus.BAD_REQUEST)
+                                                .body(UserProfileResponse.builder()
+                                                                .message(ex.getMessage())
+                                                                .build())))
+                                .onErrorResume(Exception.class, ex -> {
+                                        if (ex instanceof org.springframework.web.reactive.function.client.WebClientResponseException webEx) {
+                                                log.error("External service error during OTP verification: {} - {} - Body: {}",
+                                                                webEx.getStatusCode(), webEx.getStatusText(),
+                                                                webEx.getResponseBodyAsString());
+                                        } else {
+                                                log.error("Unexpected error during OTP verification for email={}",
+                                                                request.email(), ex);
+                                        }
+                                        return Mono.just(ResponseEntity
+                                                        .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                                                        .body(UserProfileResponse.builder()
+                                                                        .message("Error: " + ex.getMessage())
+                                                                        .build()));
+                                });
+        }
 }
