@@ -1,6 +1,11 @@
 server:
   port: 8080  # Port pour le service
 
+# Config Swagger
+app:
+  swagger:
+    server-url: ${FREELANCE_DRIVER_SERVER_URL:https://traefikdev.yowyob.com/freelance-driver}
+    
 springdoc:
   swagger-ui:
     path: /swagger-ui.html

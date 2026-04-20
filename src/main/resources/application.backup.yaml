@@ -1,10 +1,15 @@
 server:
   port: 8081
 
+# Config Swagger
+app:
+  swagger:
+    server-url: ${FREELANCE_DRIVER_SERVER_URL:https://traefikdev.yowyob.com/freelance-driver}
+
 spring:
   application:
     name: freelance-driver
-    
+
   docker:
     compose:
       enabled: false
@@ -106,7 +111,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: ["health","info","prometheus"]
+        include: [ "health", "info", "prometheus" ]
   endpoint:
     health:
       show-details: "always"
